@@ -22,6 +22,18 @@
     </div>
 {% endif %}
 
+{% if upcoming_teaching or upcoming_learning %}
+    <div class="alert alert-info">
+        <strong>Coming up in the next 24 hours:</strong>
+        {% for s in upcoming_teaching %}
+            <div>You're teaching {{ s.offer.title }} at {{ s.start_time.strftime('%I:%M %p') }}.</div>
+        {% endfor %}
+        {% for s in upcoming_learning %}
+            <div>You're attending {{ s.offer.title }} at {{ s.start_time.strftime('%I:%M %p') }}.</div>
+        {% endfor %}
+    </div>
+{% endif %}
+
 <div class="d-flex gap-2 mb-4">
     <a href="{{ url_for('offers.new_offer') }}" class="btn btn-outline-primary mt-2">Offer to Teach</a>
     <a href="{{ url_for('main.explore') }}" class="btn btn-primary mt-2">Explore Skills</a>
@@ -51,7 +63,7 @@
     <div class="col-md-4">
         <div class="card h-100 shadow-sm">
             <div class="card-body">
-                <span class="badge bg-{{ 'warning' if req.status == 'open' else 'success' }} mb-2">{{ req.status }}</span>
+                <span class="badge bg-{{ 'warning' if req.status == 'open' else ('danger' if req.status == 'hidden' else 'success') }} mb-2">{{ req.status }}</span>
                 <h6 class="card-title">{{ req.skill.name }}</h6>
                 <p class="text-muted small mb-0">{{ req.description or "No details provided." }}</p>
                 {% if current_user.is_authenticated and current_user.id == req.student_id %}

@@ -14,7 +14,8 @@ class User(UserMixin, db.Model):
     bio = db.Column(db.Text, nullable=True)
     grade = db.Column(db.String(20), nullable=True)
     courses_completed = db.Column(db.Text, nullable=True)  # free text, e.g. "AP Bio, Algebra II, Spanish 3"
-
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
@@ -31,8 +32,27 @@ class User(UserMixin, db.Model):
             Enrollment.session_id == session_ref.id,
             Enrollment.attended.is_(None)
         ).exists()
-    @property
-    def sessions_taught_count(self):
+    
+    def _taught_sessions_query(self):
+        """Sessions this user taught: ended, not cancelled, at least one
+        confirmed enrollment, and attendance marked for every confirmed enrollment."""
+        has_confirmed = (
+            db.session.query(Enrollment.id)
+            .filter(
+                Enrollment.session_id == Session.id,
+                Enrollment.status == "confirmed",
+            )
+            .exists()
+        )
+        no_pending_confirmed = ~(
+            db.session.query(Enrollment.id)
+            .filter(
+                Enrollment.session_id == Session.id,
+                Enrollment.status == "confirmed",
+                Enrollment.attended.is_(None),
+            )
+            .exists()
+        )
         return (
             db.session.query(Session)
             .join(Offer, Session.offer_id == Offer.id)
@@ -40,27 +60,25 @@ class User(UserMixin, db.Model):
                 Offer.teacher_id == self.id,
                 Session.status != "cancelled",
                 Session.end_time < datetime.now(),
-
-                # The session must have at least one confirmed student.
-                db.session.query(Enrollment.id)
-                .filter(
-                    Enrollment.session_id == Session.id,
-                    Enrollment.status == "confirmed"
-                )
-                .exists(),
-
-                # Every confirmed student's attendance must be marked.
-                ~db.session.query(Enrollment.id)
-                .filter(
-                    Enrollment.session_id == Session.id,
-                    Enrollment.status == "confirmed",
-                    Enrollment.attended.is_(None)
-                )
-                .exists(),
+                has_confirmed,
+                no_pending_confirmed,
             )
-            .count()
         )
 
+    @property
+    def sessions_taught_count(self):
+        return self._taught_sessions_query().count()
+
+    @property
+    def skills_taught(self):
+        """Distinct skills from offers that have at least one taught session."""
+        seen = {}
+        for session in self._taught_sessions_query().distinct():
+            offer = session.offer
+            if offer.skill.name not in seen:
+                seen[offer.skill.name] = {"skill": offer.skill.name, "offer_title": offer.title}
+        return list(seen.values())
+    
     @property
     def average_teaching_rating(self):
         result = (
@@ -103,61 +121,6 @@ class User(UserMixin, db.Model):
                 seen[skill_name] = {"skill": skill_name, "offer_title": offer.title, "date": enrollment.session.start_time}
         return list(seen.values())
     
-    @property
-    def skills_taught(self):
-        """Distinct skills from offers that have at least one taught session."""
-        offers_with_taught_session = (
-            db.session.query(Offer)
-            .join(Session, Session.offer_id == Offer.id)
-            .filter(
-                Offer.teacher_id == self.id,
-                Session.status != "cancelled",
-                Session.end_time < datetime.now(),
-
-                # The session must have at least one confirmed student.
-                db.session.query(Enrollment.id)
-                .filter(
-                    Enrollment.session_id == Session.id,
-                    Enrollment.status == "confirmed"
-                )
-                .exists(),
-
-                # Attendance must be marked for every confirmed student.
-                ~db.session.query(Enrollment.id)
-                .filter(
-                    Enrollment.session_id == Session.id,
-                    Enrollment.status == "confirmed",
-                    Enrollment.attended.is_(None)
-                ).exists(),
-            )
-            .distinct()
-        )
-
-        seen = {}
-        for offer in offers_with_taught_session:
-            if offer.skill.name not in seen:
-                seen[offer.skill.name] = {
-                    "skill": offer.skill.name,
-                    "offer_title": offer.title
-                }
-
-        return list(seen.values())
-    @property
-    def teaching_badges(self):
-        count = self.sessions_taught_count
-        badges = []
-        if count >= 1:
-            badges.append("First Class Taught")
-        if count >= 3:
-            badges.append("Regular Teacher")
-        if count >= 5:
-            badges.append("Master Teacher")
-        return badges
-
-    @property
-    def learner_badges(self):
-        return [f"Completed: {entry['skill']}" for entry in self.skills_learned]
-
 
 class Skill(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -223,6 +186,7 @@ class Session(db.Model):
     offer = db.relationship("Offer", backref="sessions")
 
     RECORDING_GRACE_HOURS = 48
+    recording_hidden = db.Column(db.Boolean, default=False, nullable=False)
 
     @property
     def has_ended(self):
@@ -231,6 +195,35 @@ class Session(db.Model):
     @property
     def is_cancelled(self):
         return self.status == "cancelled"
+    
+    @property
+    def is_completed(self):
+        if self.is_cancelled or not self.has_ended:
+            return False
+
+        confirmed = [
+            e for e in self.enrollments
+            if e.status == "confirmed"
+        ]
+
+        if not confirmed:
+            return False
+
+        return all(e.attended is not None for e in confirmed)
+
+    @property
+    def is_missed(self):
+        """True when the session ended and at least one confirmed
+        student was marked absent."""
+        if self.is_cancelled or not self.has_ended:
+            return False
+
+        return any(
+            enrollment.status == "confirmed"
+            and enrollment.attended is False
+            for enrollment in self.enrollments
+        )
+    
 
     @property
     def recording_deadline(self):
@@ -242,6 +235,8 @@ class Session(db.Model):
             return "cancelled"
         if not self.has_ended:
             return "not_yet"
+        if self.recording_hidden:
+            return "removed"
         if self.recording_url:
             return "uploaded"
         if datetime.now() <= self.recording_deadline:
@@ -302,6 +297,68 @@ class Comment(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     content = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
-
+    hidden = db.Column(db.Boolean, default=False, nullable=False)
+        
     offer = db.relationship("Offer", backref="comments")
     user = db.relationship("User", backref="comments")
+
+class Notification(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    category = db.Column(db.String(30), nullable=False)  # enrollment / cancellation / feedback_reminder
+    message = db.Column(db.String(300), nullable=False)
+    link = db.Column(db.String(300), nullable=True)
+    read_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    user = db.relationship("User", backref="notifications")
+
+    @property
+    def is_unread(self):
+        return self.read_at is None
+    
+class Report(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    reporter_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    offer_id = db.Column(db.Integer, db.ForeignKey("offer.id"), nullable=True)
+    request_id = db.Column(db.Integer, db.ForeignKey("request.id"), nullable=True)
+    comment_id = db.Column(db.Integer, db.ForeignKey("comment.id"), nullable=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("session.id"), nullable=True)  # recording report
+    target_key = db.Column(db.String(50), nullable=False)  # e.g. "offer:12" — dedup key, sidesteps NULL-uniqueness gotcha
+    reason = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default="open")  # open / resolved / dismissed
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolution_note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    reporter = db.relationship("User", foreign_keys=[reporter_id], backref="reports_filed")
+    resolved_by = db.relationship("User", foreign_keys=[resolved_by_id])
+    offer = db.relationship("Offer", backref="reports")
+    request = db.relationship("Request", backref="reports")
+    comment = db.relationship("Comment", backref="reports")
+    session = db.relationship("Session", backref="reports")
+
+    __table_args__ = (
+        db.UniqueConstraint("reporter_id", "target_key", name="unique_report_per_user_per_target"),
+        db.CheckConstraint(
+            "((offer_id IS NOT NULL) + (request_id IS NOT NULL) + (comment_id IS NOT NULL) + (session_id IS NOT NULL)) = 1",
+            name="ck_report_exactly_one_target",
+        ),
+    )
+
+    @property
+    def target(self):
+        return self.offer or self.request or self.comment or self.session
+
+    @property
+    def target_label(self):
+        if self.offer:
+            return f"Offer: {self.offer.title}"
+        if self.request:
+            return f"Request: {self.request.skill.name}"
+        if self.comment:
+            return f"Comment on {self.comment.offer.title}"
+        if self.session:
+            return f"Recording for {self.session.offer.title}"
+        return "Unknown"

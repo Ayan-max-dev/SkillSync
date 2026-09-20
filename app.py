@@ -3,8 +3,8 @@ from functools import wraps
 from urllib.parse import urlparse
 import logging
 from flask import Flask, abort, render_template, request, redirect, url_for, flash
-from flask_login import  login_required, current_user
-from models import db, User, Skill, Offer, Request, Session, Enrollment, RequestUpvote, Feedback, Lesson, Comment
+from flask_login import login_required, current_user
+from models import db, User, Skill, Offer, Request, Session, Enrollment, RequestUpvote, Feedback, Lesson, Comment, Notification, Report
 from config import Config
 from flask_migrate import Migrate
 from flask import jsonify
@@ -15,8 +15,11 @@ from offers.routes import offers_bp
 from learning_requests.routes import requests_bp
 from extensions import csrf, login_manager, limiter
 from sessions.routes import sessions_bp
+from notifications.routes import notifications_bp
 from sqlalchemy.orm import selectinload
 from main.routes import main_bp
+from admin.routes import admin_bp
+from reports.routes import reports_bp
 
 
 def create_app(test_config=None):
@@ -37,9 +40,20 @@ def create_app(test_config=None):
     app.register_blueprint(offers_bp)
     app.register_blueprint(requests_bp)
     app.register_blueprint(sessions_bp)
+    app.register_blueprint(notifications_bp)
     app.register_blueprint(main_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(reports_bp)
 
     login_manager.login_view = "auth.login"
+
+    @app.context_processor
+    def inject_unread_notifications():
+        if current_user.is_authenticated:
+            count = Notification.query.filter_by(user_id=current_user.id, read_at=None).count()
+        else:
+            count = 0
+        return dict(unread_notifications_count=count)
 
     if not app.debug:
         logging.basicConfig(level=logging.INFO)
@@ -51,7 +65,6 @@ app = create_app()
 ALLOWED_CATEGORIES = {"Academic", "Non-academic"}
 ALLOWED_FORMATS = {"live", "recorded"}
 ALLOWED_LEVELS = {"Beginner", "Intermediate", "Advanced"}
-
 
 
 def positive_int(value, minimum=1, maximum=50):
@@ -68,6 +81,7 @@ def valid_url(value, max_length=300):
     parsed = urlparse(value)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
+
 def require_complete_profile(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -77,9 +91,11 @@ def require_complete_profile(f):
         return f(*args, **kwargs)
     return decorated
 
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
 
 @app.errorhandler(403)
 def forbidden(error):
@@ -89,6 +105,7 @@ def forbidden(error):
 @app.errorhandler(404)
 def not_found(error):
     return render_template("404.html"), 404
+
 
 if __name__ == "__main__":
     app.run(debug=False)

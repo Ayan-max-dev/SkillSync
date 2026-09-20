@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request
 from flask_login import login_required, current_user
 from sqlalchemy.orm import selectinload
@@ -9,10 +10,11 @@ ALLOWED_CATEGORIES = {"Academic", "Non-academic"}
 ALLOWED_FORMATS = {"live", "recorded"}
 ALLOWED_LEVELS = {"Beginner", "Intermediate", "Advanced"}
 
-# ... dashboard, explore, view_users, offer_relevance_score, request_relevance_score, bounded_text all move here
+
 def bounded_text(value, max_length):
     value = (value or "").strip()
     return value if len(value) <= max_length else None
+
 
 def offer_relevance_score(offer, query):
     query = query.lower()
@@ -33,6 +35,7 @@ def offer_relevance_score(offer, query):
 
     return score
 
+
 def request_relevance_score(req, query):
     query = query.lower()
     description = (req.description or "").lower()
@@ -52,16 +55,33 @@ def request_relevance_score(req, query):
 @login_required
 def dashboard():
     my_offers = (
-    Offer.query
-    .filter_by(teacher_id=current_user.id)
-    .options(selectinload(Offer.sessions))
-    .all()
+        Offer.query
+        .filter_by(teacher_id=current_user.id)
+        .options(selectinload(Offer.sessions))
+        .all()
     )
     my_requests = Request.query.filter_by(student_id=current_user.id).all()
-    my_enrollments = Enrollment.query.filter_by(student_id=current_user.id).all()
+    my_enrollments = (
+        Enrollment.query
+        .filter_by(student_id=current_user.id)
+        .options(selectinload(Enrollment.session).selectinload(Session.offer))
+        .all()
+    )
 
     my_sessions = [s for offer in my_offers for s in offer.sessions]
     sessions_needing_recording = [s for s in my_sessions if s.recording_status in ("pending", "overdue")]
+
+    soon_cutoff = datetime.now() + timedelta(hours=24)
+    upcoming_teaching = [
+        s for s in my_sessions
+        if not s.is_cancelled and datetime.now() < s.start_time <= soon_cutoff
+    ]
+    upcoming_learning = [
+        e.session for e in my_enrollments
+        if e.status == "confirmed"
+        and not e.session.is_cancelled
+        and datetime.now() < e.session.start_time <= soon_cutoff
+    ]
 
     return render_template(
         "dashboard.html",
@@ -69,8 +89,9 @@ def dashboard():
         my_requests=my_requests,
         my_enrollments=my_enrollments,
         sessions_needing_recording=sessions_needing_recording,
+        upcoming_teaching=upcoming_teaching,
+        upcoming_learning=upcoming_learning,
     )
-
 
 
 @main_bp.route("/explore")
@@ -107,7 +128,7 @@ def explore():
             selectinload(Request.skill)
         )
     )
-    
+
     if category in ("Academic", "Non-academic"):
         offers_query = offers_query.filter(Skill.category == category)
         requests_query = requests_query.filter(Skill.category == category)

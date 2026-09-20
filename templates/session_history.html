@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Session History — SkillSync{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-md-9">
+
+        <h2 class="fw-bold mb-4">Session History</h2>
+
+        <!-- Sessions I Teach -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+
+                <h4 class="fw-bold mb-3">Sessions I Teach</h4>
+
+                {% if taught_sessions %}
+
+                    {% for session in taught_sessions %}
+
+                        <a href="{{ url_for('offers.offer_detail', offer_id=session.offer.id) }}"
+                           class="text-decoration-none text-dark">
+
+                            <div class="border rounded p-3 mb-3">
+
+                                <h5 class="fw-bold">
+                                    {{ session.offer.title }}
+                                </h5>
+
+                                <div class="text-muted">
+                                    {{ session.start_time.strftime('%b %d, %Y — %I:%M %p') }}
+                                </div>
+
+                                {% if session.is_cancelled %}
+                                    <span class="badge bg-danger mt-2">Cancelled</span>
+                                {% elif session.is_completed %}
+                                    <span class="badge bg-success mt-2">Completed</span>
+                                {% elif session.has_ended and session.enrollments %}
+                                    <span class="badge bg-warning text-dark mt-2">Attendance Pending</span>
+                                {% elif session.has_ended %}
+                                    <span class="badge bg-secondary mt-2">No attendees</span>
+                                {% else %}
+                                    <span class="badge bg-primary mt-2">Upcoming</span>
+                                {% endif %}
+
+                            </div>
+
+                        </a>
+
+                    {% endfor %}
+
+                {% else %}
+
+                    <p class="text-muted mb-0">
+                        You haven't scheduled any sessions yet.
+                    </p>
+
+                {% endif %}
+
+            </div>
+        </div>
+
+
+        <!-- Sessions I Attend -->
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+
+                <h4 class="fw-bold mb-3">Sessions I Attend</h4>
+
+                {% if attended_sessions %}
+
+                    {% for session in attended_sessions %}
+
+                        {% set my_enrollment = namespace(value=None) %}
+
+                        {% for enrollment in session.enrollments %}
+                            {% if enrollment.student_id == current_user.id %}
+                                {% set my_enrollment.value = enrollment %}
+                            {% endif %}
+                        {% endfor %}
+
+
+
+                        <a href="{{ url_for('offers.offer_detail', offer_id=session.offer.id) }}"
+                           class="text-decoration-none text-dark">
+
+                            <div class="border rounded p-3 mb-3">
+
+                                <h5 class="fw-bold mb-1">
+                                    {{ session.offer.title }}
+                                </h5>
+
+                                <div class="text-muted small mb-2">
+                                    {{ session.start_time.strftime('%b %d, %Y — %I:%M %p') }}
+                                </div>
+
+
+                                {% if session.is_cancelled %}
+
+                                    <span class="badge bg-danger">
+                                        Cancelled
+                                    </span>
+
+                                {% elif not session.has_ended %}
+
+                                    <span class="badge bg-primary">
+                                        Upcoming
+                                    </span>
+
+                                {% elif my_enrollment.value and my_enrollment.value.attended == True %}
+
+                                    <span class="badge bg-success">
+                                        Attended
+                                    </span>
+
+                                {% elif my_enrollment.value and my_enrollment.value.attended == False %}
+
+                                    <span class="badge bg-warning text-dark">
+                                        Missed
+                                    </span>
+
+                                {% else %}
+
+                                    <span class="badge bg-secondary">
+                                        Attendance Pending
+                                    </span>
+
+                                {% endif %}
+
+                            </div>
+
+                        </a>
+
+                    {% endfor %}
+
+                {% else %}
+
+                    <p class="text-muted mb-0">
+                        You haven't enrolled in any sessions yet.
+                    </p>
+
+                {% endif %}
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

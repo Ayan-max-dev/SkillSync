@@ -37,6 +37,11 @@ def valid_url(value, max_length=300):
 @offers_bp.route("/offers/<int:offer_id>")
 def offer_detail(offer_id):
     offer = Offer.query.get_or_404(offer_id)
+
+    # Hidden offers are visible only to administrators after moderation.
+    if offer.status == "hidden" and not (current_user.is_authenticated and current_user.is_admin):
+        abort(404)
+
     return render_template("offer_detail.html", offer=offer)
 
 

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Report Content — SkillSync{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <h3 class="fw-bold">Report Content</h3>
+                <p class="text-muted">{{ target_label }}</p>
+                <div class="alert alert-info small">The content will remain visible until an administrator reviews the report.</div>
+
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="target_type" value="{{ target_type }}">
+                    <input type="hidden" name="target_id" value="{{ target.id }}">
+
+                    <div class="mb-3">
+                        <label class="form-label">Reason</label>
+                        <select name="reason_type" class="form-select" required>
+                            <option value="">Choose a reason</option>
+                            {% for reason in report_reasons %}
+                                <option value="{{ reason }}">{{ reason }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Additional details <span class="text-muted">(optional)</span></label>
+                        <textarea name="details" class="form-control" rows="4" maxlength="1000" placeholder="Give the administrator useful context."></textarea>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-danger">Submit Report</button>
+                        <a href="{{ url_for('main.explore') if target_type == 'request' else url_for('offers.offer_detail', offer_id=(target.offer_id if target_type in ['comment', 'recording'] else target.id)) }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

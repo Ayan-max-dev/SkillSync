@@ -105,6 +105,9 @@
                             {% if current_user.is_authenticated and current_user.id != req.student_id %}
                                 <a href="{{ url_for('offers.new_offer', request_id=req.id) }}" class="btn btn-sm btn-primary mt-2">Offer to Teach This</a>
                             {% endif %}
+                            {% if current_user.is_authenticated and current_user.id != req.student_id and not current_user.is_admin %}
+                                <a href="{{ url_for('reports.new_report', target_type='request', target_id=req.id) }}" class="btn btn-sm btn-outline-danger mt-2">Report Request</a>
+                            {% endif %}
                             {% if current_user.is_authenticated and current_user.id == req.student_id %}
                                 <form method="POST" action="{{ url_for('requests.delete_request', request_id=req.id) }}" class="mt-2">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

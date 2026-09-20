@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Review Report — SkillSync{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <a href="{{ url_for('admin.dashboard') }}" class="text-decoration-none">← Back to Admin Dashboard</a>
+        <div class="card shadow-sm mt-3">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h3 class="fw-bold">Review Report</h3>
+                        <p class="text-muted mb-1">{{ report.target_label }}</p>
+                        <p class="small text-muted">Reported by {{ report.reporter.name }} · {{ report.created_at.strftime('%b %d, %Y — %I:%M %p') }}</p>
+                    </div>
+                    <span class="badge bg-{{ 'warning text-dark' if report.status == 'open' else ('success' if report.status == 'resolved' else ('info text-dark' if report.status == 'restored' else 'secondary')) }}">{{ report.status }}</span>
+                </div>
+
+                <hr>
+                <h6 class="fw-bold">Reason</h6>
+                <p>{{ report.reason }}</p>
+
+                <h6 class="fw-bold">Reported Content</h6>
+                {% if report.offer %}
+                    <p><strong>{{ report.offer.title }}</strong></p>
+                    <p>{{ report.offer.description or 'No description provided.' }}</p>
+                    <a href="{{ url_for('offers.offer_detail', offer_id=report.offer.id) }}" class="btn btn-sm btn-outline-primary">Open Offer</a>
+                {% elif report.request %}
+                    <p><strong>{{ report.request.skill.name }}</strong></p>
+                    <p>{{ report.request.description or 'No description provided.' }}</p>
+                {% elif report.comment %}
+                    <p class="border rounded p-3">{{ report.comment.content }}</p>
+                    <a href="{{ url_for('offers.offer_detail', offer_id=report.comment.offer_id) }}" class="btn btn-sm btn-outline-primary">Open Offer</a>
+                {% elif report.session %}
+                    <p><strong>{{ report.session.offer.title }}</strong></p>
+                    {% if report.session.recording_url %}
+                        <a href="{{ report.session.recording_url }}" target="_blank" class="btn btn-sm btn-outline-primary">Open Recording</a>
+                    {% else %}
+                        <p class="text-muted">Recording is no longer available.</p>
+                    {% endif %}
+                    <a href="{{ url_for('offers.offer_detail', offer_id=report.session.offer_id) }}" class="btn btn-sm btn-outline-secondary">Open Offer</a>
+                {% else %}
+                    <p class="text-muted">The reported content no longer exists.</p>
+                {% endif %}
+
+                {% if report.status == 'open' %}
+                    <hr>
+                    <form method="POST" action="{{ url_for('admin.resolve_report', report_id=report.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label class="form-label">Resolution note <span class="text-muted">(optional)</span></label>
+                            <textarea name="resolution_note" class="form-control" rows="3" maxlength="1000"></textarea>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button name="action" value="hide" type="submit" class="btn btn-danger" onclick="return confirm('Hide this content?');">Hide Content</button>
+                            <button name="action" value="dismiss" type="submit" class="btn btn-outline-secondary">Dismiss Report</button>
+                        </div>
+                    </form>
+                {% elif report.status == 'resolved' %}
+                    <hr>
+                    <p class="small text-muted mb-2">Hidden by {{ report.resolved_by.name if report.resolved_by else 'an administrator' }}{% if report.resolved_at %} on {{ report.resolved_at.strftime('%b %d, %Y — %I:%M %p') }}{% endif %}.</p>
+                    {% if report.resolution_note %}<p class="small mb-3" style="white-space: pre-line;">{{ report.resolution_note }}</p>{% endif %}
+                    <form method="POST" action="{{ url_for('admin.restore_report', report_id=report.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-success btn-sm" onclick="return confirm('Restore this content and make it visible again?');">Restore Content</button>
+                    </form>
+                {% else %}
+                    <hr>
+                    <p class="small text-muted mb-0">
+                        {% if report.status == 'restored' %}Restored{% else %}Reviewed{% endif %}
+                        by {{ report.resolved_by.name if report.resolved_by else 'an administrator' }}{% if report.resolved_at %} on {{ report.resolved_at.strftime('%b %d, %Y — %I:%M %p') }}{% endif %}.
+                    </p>
+                    {% if report.resolution_note %}<p class="small mt-2 mb-0" style="white-space: pre-line;">{{ report.resolution_note }}</p>{% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -5,7 +5,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 
-from models import Enrollment, Feedback, Offer, Session, db
+from models import Enrollment, Feedback, Notification, Offer, Session, db
 
 
 sessions_bp = Blueprint("sessions", __name__)
@@ -56,6 +56,10 @@ def schedule_session(offer_id):
             flash("End time must be after start time.")
             return redirect(url_for("sessions.schedule_session", offer_id=offer.id))
 
+        if start_time <= datetime.now():
+            flash("The session must start in the future.")
+            return redirect(url_for("sessions.schedule_session", offer_id=offer.id))
+
         new_session = Session(
             offer_id=offer.id,
             start_time=start_time,
@@ -84,6 +88,10 @@ def rsvp_session(session_id):
         flash("This session has been cancelled.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
+    if target_session.has_ended:
+        flash("You can't RSVP to a session that has already ended.")
+        return redirect(url_for("offers.offer_detail", offer_id=offer.id))
+
     if offer.teacher_id == current_user.id:
         flash("You can't RSVP to your own session.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
@@ -109,6 +117,18 @@ def rsvp_session(session_id):
 
     try:
         db.session.commit()
+        if status == "confirmed":
+            message = f"You're confirmed for {offer.title} on {target_session.start_time.strftime('%b %d, %Y')}."
+        else:
+            message = f"You've been waitlisted for {offer.title} — you'll be notified if a spot opens."
+        db.session.add(Notification(
+            user_id=current_user.id,
+            category="enrollment",
+            message=message,
+            link=url_for("offers.offer_detail", offer_id=offer.id),
+        ))
+        db.session.commit()  
+                 
     except IntegrityError:
         db.session.rollback()
         flash("You've already RSVP'd to this session.")
@@ -135,8 +155,8 @@ def session_feedback(session_id):
         flash("You can only leave feedback for sessions you attended.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
-    if enrollment.attended is False:
-        flash("You were marked as not attending this session, so feedback isn't available.")
+    if enrollment.attended is not True:
+        flash("Feedback is available after the teacher marks you as attended.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
     if not target_session.has_ended:
@@ -188,6 +208,13 @@ def mark_attendance(session_id):
     if request.method == "POST":
         for enrollment in confirmed_enrollments:
             enrollment.attended = request.form.get(f"attended_{enrollment.id}") == "on"
+            if enrollment.attended:
+                db.session.add(Notification(
+                    user_id=enrollment.student_id,
+                    category="feedback_reminder",
+                    message=f"How was {offer.title}? Leave feedback for the teacher.",
+                    link=url_for("sessions.session_feedback", session_id=target_session.id),
+                ))
         db.session.commit()
         flash("Attendance updated!")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
@@ -254,9 +281,41 @@ def cancel_session(session_id):
             return redirect(url_for("sessions.cancel_session", session_id=target_session.id))
 
         target_session.status = "cancelled"
+        for enrollment in target_session.enrollments:
+            db.session.add(Notification(
+                user_id=enrollment.student_id,
+                category="cancellation",
+                message=f"Your session for {offer.title} was cancelled: {reason}",
+                link=url_for("offers.offer_detail", offer_id=offer.id),
+            ))
         target_session.cancelled_reason = reason
         db.session.commit()
         flash("Session cancelled. Attendees will see the update.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
     return render_template("cancel_session.html", session=target_session, offer=offer)
+
+@sessions_bp.route("/sessions/history")
+@login_required
+def session_history():
+    taught_sessions = (
+        Session.query
+        .join(Offer)
+        .filter(Offer.teacher_id == current_user.id)
+        .order_by(Session.start_time.desc())
+        .all()
+    )
+
+    attended_sessions = (
+        Session.query
+        .join(Enrollment)
+        .filter(Enrollment.student_id == current_user.id)
+        .order_by(Session.start_time.desc())
+        .all()
+    )
+
+    return render_template(
+        "session_history.html",
+        taught_sessions=taught_sessions,
+        attended_sessions=attended_sessions
+    )

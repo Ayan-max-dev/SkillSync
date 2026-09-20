@@ -32,11 +32,11 @@ def add_user():
         password = request.form.get("password", "")
 
         if not name or not email or "@" not in email or not 8 <= len(password) <= 128:
-            flash("Enter a valid name, email, and password (8–128 characters).")
+            flash("Enter a valid name, email, and password (8–128 characters).", "warning")
             return redirect(url_for("auth.add_user"))
 
         if User.query.filter_by(email=email).first():
-            flash("An account with that email already exists.")
+            flash("An account with that email already exists.", "warning")
             return redirect(url_for("auth.add_user"))
 
         new_user = User(name=name, email=email)
@@ -59,14 +59,14 @@ def login():
         email = bounded_text(request.form.get("email"), 120)
         password = request.form.get("password", "")
         if not email or not password or len(password) > 128:
-            flash("Enter your email and password.")
+            flash("Enter your email and password.", "warning")
             return redirect(url_for("auth.login"))
         user = User.query.filter_by(email=email).first()
 
         if user and user.check_password(password):
             login_user(user)
             return redirect(url_for("main.dashboard"))
-        flash("Invalid email or password.")
+        flash("Invalid email or password.", "warning")
         return redirect(url_for("auth.login"))
 
     return render_template("login.html")

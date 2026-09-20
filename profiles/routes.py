@@ -21,7 +21,7 @@ def my_profile():
 @profiles_bp.route("/profile/<int:user_id>")
 @login_required
 def view_profile(user_id):
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     return render_template("profile.html", profile_user=user)
 
 
@@ -33,7 +33,7 @@ def edit_profile():
         grade = bounded_text(request.form.get("grade"), 20)
         courses_completed = bounded_text(request.form.get("courses_completed"), 1000)
         if not grade or not courses_completed or bio is None:
-            flash("Enter a valid grade, courses list, and bio.")
+            flash("Enter a valid grade, courses list, and bio.", "warning")
             return redirect(url_for("profiles.edit_profile"))
 
         current_user.bio = bio

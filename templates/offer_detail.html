@@ -12,6 +12,14 @@
         </p>        
         <p>{{ offer.description or "No description provided." }}</p>
 
+        {% if current_user.is_authenticated and current_user.id != offer.teacher_id and not current_user.is_admin %}
+            <a href="{{ url_for('reports.new_report', target_type='offer', target_id=offer.id) }}" class="btn btn-sm btn-outline-danger mb-4">Report Offer</a>
+        {% endif %}
+
+        {% if offer.status == "hidden" and current_user.is_admin %}
+            <div class="alert alert-warning">This offer is hidden from students because it was moderated.</div>
+        {% endif %}
+
         {% if current_user.is_authenticated and current_user.id == offer.teacher_id %}
             <a href="{{ url_for('sessions.schedule_session', offer_id=offer.id) }}" class="btn btn-outline-primary btn-sm mb-4">
                 + Schedule a Session
@@ -72,6 +80,11 @@
                     {% if session.has_ended %}
                         {% if session.recording_status == "uploaded" and current_user.is_authenticated %}
                             <a href="{{ session.recording_url }}" target="_blank" class="btn btn-sm btn-outline-success mt-2">▶ Watch Recording</a>
+                            {% if current_user.id != offer.teacher_id and not current_user.is_admin %}
+                                <a href="{{ url_for('reports.new_report', target_type='recording', target_id=session.id) }}" class="btn btn-sm btn-outline-danger mt-2">Report Recording</a>
+                            {% endif %}
+                        {% elif session.recording_status == "removed" %}
+                            <span class="badge bg-secondary mt-2">Recording removed by moderator</span>
                         {% elif current_user.is_authenticated and current_user.id == offer.teacher_id %}
                             <a href="{{ url_for('sessions.add_recording', session_id=session.id) }}" class="btn btn-sm {{ 'btn-outline-danger' if session.recording_status == 'overdue' else 'btn-outline-warning' }} mt-2">
                                 {{ 'Recording overdue — add now' if session.recording_status == 'overdue' else 'Add Recording' }}
@@ -107,7 +120,7 @@
                             <button type="submit" class="btn btn-primary btn-sm">RSVP</button>
                         </form>
                     {% elif not current_user.is_authenticated %}
-                        <a href="{{ url_for('sessions.login') }}" class="btn btn-sm btn-outline-secondary">Log in to RSVP</a>
+                        <a href="{{ url_for('auth.login') }}" class="btn btn-sm btn-outline-secondary">Log in to RSVP</a>
                     {% endif %}
                     {% if my_enrollment and my_enrollment[0].status == 'confirmed' and my_enrollment[0].attended is not sameas false and session.has_ended %}
                         {% set my_feedback = session.feedback | selectattr('student_id', 'equalto', current_user.id) | list %}
@@ -150,7 +163,7 @@
 
 {% set sorted_comments = offer.comments | sort(attribute='created_at') %}
 {% if sorted_comments %}
-    {% for comment in sorted_comments %}
+    {% for comment in sorted_comments if not comment.hidden %}
         <div class="d-flex mb-3">
             <div class="flex-grow-1">
                 <p class="mb-0">
@@ -158,6 +171,9 @@
                     <span class="text-muted small ms-1">{{ comment.created_at.strftime('%b %d, %I:%M %p') }}</span>
                 </p>
                 <p class="mb-0">{{ comment.content }}</p>
+                {% if current_user.is_authenticated and comment.user_id != current_user.id and not current_user.is_admin %}
+                    <a href="{{ url_for('reports.new_report', target_type='comment', target_id=comment.id) }}" class="btn btn-link btn-sm p-0 text-danger">Report Comment</a>
+                {% endif %}
                 {% if current_user.is_authenticated and comment.user_id == current_user.id %}
                     <form method="POST" action="{{ url_for('offers.delete_comment', comment_id=comment.id) }}" class="mt-1">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
