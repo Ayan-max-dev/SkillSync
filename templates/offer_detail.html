@@ -12,6 +12,24 @@
         </p>        
         <p>{{ offer.description or "No description provided." }}</p>
 
+        {% if offer.material_file or offer.material_url %}
+            <div class="mb-4">
+                <strong>Teaching Material:</strong>
+                {% if offer.material_file %}
+                    <a href="{{ url_for('offers.offer_material', offer_id=offer.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary ms-2">View PDF{% if offer.material_name %} — {{ offer.material_name }}{% endif %}</a>
+                {% endif %}
+                {% if offer.material_url %}
+                    <a href="{{ offer.material_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-2">Open Material Link</a>
+                {% endif %}
+            </div>
+        {% endif %}
+
+        {% if offer.approval_status == "pending" and (current_user.is_admin or (current_user.is_authenticated and current_user.id == offer.teacher_id)) %}
+            <div class="alert alert-warning">This offer is awaiting administrator approval and is not visible on Explore yet.</div>
+        {% elif offer.approval_status == "rejected" and current_user.is_authenticated and current_user.id == offer.teacher_id %}
+            <div class="alert alert-danger">This offer needs changes before it can be published. {{ offer.approval_note }}</div>
+        {% endif %}
+
         {% if current_user.is_authenticated and current_user.id != offer.teacher_id and not current_user.is_admin %}
             <a href="{{ url_for('reports.new_report', target_type='offer', target_id=offer.id) }}" class="btn btn-sm btn-outline-danger mb-4">Report Offer</a>
         {% endif %}
@@ -21,9 +39,14 @@
         {% endif %}
 
         {% if current_user.is_authenticated and current_user.id == offer.teacher_id %}
+            {% if offer.approval_status == "rejected" %}
+                <a href="{{ url_for('offers.edit_offer', offer_id=offer.id) }}" class="btn btn-outline-warning btn-sm mb-4">Edit & Resubmit</a>
+            {% endif %}
+            {% if offer.approval_status == "approved" %}
             <a href="{{ url_for('sessions.schedule_session', offer_id=offer.id) }}" class="btn btn-outline-primary btn-sm mb-4">
                 + Schedule a Session
             </a>
+            {% endif %}
             {% if not offer.sessions %}
                 <form method="POST" action="{{ url_for('offers.delete_offer', offer_id=offer.id) }}" class="d-inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -57,7 +80,7 @@
 
 {% else %}
         <h4 class="fw-bold mt-4">Upcoming Sessions</h4>
-       {% for session in offer.sessions %}
+       {% for session in offer.sessions if not session.deleted_at %}
             <div class="card shadow-sm mb-3">
                 <div class="card-body">
                     {% if session.is_cancelled %}
@@ -85,6 +108,13 @@
                             {% endif %}
                         {% elif session.recording_status == "removed" %}
                             <span class="badge bg-secondary mt-2">Recording removed by moderator</span>
+                        {% elif session.recording_status == "under_review" %}
+                            <span class="badge bg-warning text-dark mt-2">Recording under admin review</span>
+                        {% elif session.recording_status == "rejected" %}
+                            {% if current_user.is_authenticated and current_user.id == offer.teacher_id %}
+                                <span class="badge bg-danger mt-2">Recording needs changes</span>
+                                <a href="{{ url_for('sessions.add_recording', session_id=session.id) }}" class="btn btn-sm btn-outline-danger mt-2">Resubmit Recording</a>
+                            {% endif %}
                         {% elif current_user.is_authenticated and current_user.id == offer.teacher_id %}
                             <a href="{{ url_for('sessions.add_recording', session_id=session.id) }}" class="btn btn-sm {{ 'btn-outline-danger' if session.recording_status == 'overdue' else 'btn-outline-warning' }} mt-2">
                                 {{ 'Recording overdue — add now' if session.recording_status == 'overdue' else 'Add Recording' }}

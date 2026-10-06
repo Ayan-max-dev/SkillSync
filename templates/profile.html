@@ -83,6 +83,16 @@
                     </div>
                 {% endif %}
 
+                <!-- Learning Badges -->
+                {% if profile_user.learner_badges %}
+                    <h5 class="fw-bold">Learning Badges</h5>
+                    <div class="mb-4">
+                        {% for badge in profile_user.learner_badges %}
+                            <span class="badge bg-success me-1 mb-1">🎓 {{ badge }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
                 <!-- Skills Taught -->
                 <h5 class="fw-bold mt-4">Skills Taught</h5>
 

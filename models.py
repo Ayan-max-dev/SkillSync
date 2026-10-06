@@ -59,6 +59,8 @@ class User(UserMixin, db.Model):
             .filter(
                 Offer.teacher_id == self.id,
                 Session.status != "cancelled",
+                Session.deleted_at.is_(None),
+                Session.recording_approval_status == "approved",
                 Session.end_time < datetime.now(),
                 has_confirmed,
                 no_pending_confirmed,
@@ -110,9 +112,18 @@ class User(UserMixin, db.Model):
 
     @property
     def skills_learned(self):
-        confirmed_enrollments = Enrollment.query.filter_by(
-            student_id=self.id, status="confirmed", attended=True
-        ).all()
+        confirmed_enrollments = (
+            Enrollment.query
+            .join(Session, Enrollment.session_id == Session.id)
+            .filter(
+                Enrollment.student_id == self.id,
+                Enrollment.status == "confirmed",
+                Enrollment.attended.is_(True),
+                Session.recording_approval_status == "approved",
+                Session.deleted_at.is_(None),
+            )
+            .all()
+        )
         seen = {}
         for enrollment in confirmed_enrollments:
             offer = enrollment.session.offer
@@ -120,6 +131,22 @@ class User(UserMixin, db.Model):
             if skill_name not in seen:
                 seen[skill_name] = {"skill": skill_name, "offer_title": offer.title, "date": enrollment.session.start_time}
         return list(seen.values())
+
+    @property
+    def teaching_badges(self):
+        count = self.sessions_taught_count
+        badges = []
+        if count >= 1:
+            badges.append("First Class Taught")
+        if count >= 5:
+            badges.append("Regular Teacher")
+        if count >= 10:
+            badges.append("Master Teacher")
+        return badges
+
+    @property
+    def learner_badges(self):
+        return [f"Completed: {entry['skill']}" for entry in self.skills_learned]
     
 
 class Skill(db.Model):
@@ -137,6 +164,11 @@ class Offer(db.Model):
     max_attendees = db.Column(db.Integer, default=10)
     status = db.Column(db.String(20), default="open")
     format = db.Column(db.String(20), default="live")  # "live" or "recorded"
+    approval_status = db.Column(db.String(20), default="pending", nullable=False)  # pending / approved / rejected
+    approval_note = db.Column(db.Text, nullable=True)
+    material_url = db.Column(db.String(500), nullable=True)
+    material_file = db.Column(db.String(255), nullable=True)
+    material_name = db.Column(db.String(255), nullable=True)
 
     teacher = db.relationship("User", backref="offers")
     skill = db.relationship("Skill", backref="offers")
@@ -168,10 +200,20 @@ class Request(db.Model):
     skill_id = db.Column(db.Integer, db.ForeignKey("skill.id"), nullable=False)
     description = db.Column(db.Text, nullable=True)
     preferred_time = db.Column(db.String(100), nullable=True)
-    status = db.Column(db.String(20), default="open")  # open / fulfilled
+    status = db.Column(db.String(20), default="open")  # open / fulfilled / hidden
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    deleted_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
 
-    student = db.relationship("User", backref="requests")
-    skill = db.relationship("Skill", backref="requests")
+    student = db.relationship(
+    "User",
+    foreign_keys=[student_id],
+    backref="requests"
+    )
+    skill = db.relationship(
+        "Skill",
+        foreign_keys=[skill_id],
+        backref="requests"
+    )
 
 class Session(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -187,6 +229,10 @@ class Session(db.Model):
 
     RECORDING_GRACE_HOURS = 48
     recording_hidden = db.Column(db.Boolean, default=False, nullable=False)
+    recording_approval_status = db.Column(db.String(20), default="none", nullable=False)  # none / submitted / approved / rejected
+    recording_review_note = db.Column(db.Text, nullable=True)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    deleted_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
 
     @property
     def has_ended(self):
@@ -198,7 +244,7 @@ class Session(db.Model):
     
     @property
     def is_completed(self):
-        if self.is_cancelled or not self.has_ended:
+        if self.is_cancelled or self.deleted_at is not None or not self.has_ended:
             return False
 
         confirmed = [
@@ -209,7 +255,10 @@ class Session(db.Model):
         if not confirmed:
             return False
 
-        return all(e.attended is not None for e in confirmed)
+        return (
+            self.recording_approval_status == "approved"
+            and all(e.attended is not None for e in confirmed)
+        )
 
     @property
     def is_missed(self):
@@ -231,14 +280,20 @@ class Session(db.Model):
 
     @property
     def recording_status(self):
-        if self.is_cancelled:
+        if self.is_cancelled or self.deleted_at is not None:
             return "cancelled"
         if not self.has_ended:
             return "not_yet"
         if self.recording_hidden:
             return "removed"
-        if self.recording_url:
+        if self.recording_approval_status == "approved":
             return "uploaded"
+        if self.recording_approval_status == "submitted":
+            return "under_review"
+        if self.recording_approval_status == "rejected":
+            return "rejected"
+        if self.recording_url:
+            return "under_review"
         if datetime.now() <= self.recording_deadline:
             return "pending"
         return "overdue"

@@ -36,6 +36,10 @@ def schedule_session(offer_id):
         flash("Only the teacher who posted this offer can schedule a session.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
+    if offer.approval_status != "approved" or offer.status != "open":
+        flash("This offer must be approved before a session can be scheduled.")
+        return redirect(url_for("offers.offer_detail", offer_id=offer.id))
+
     if request.method == "POST":
         start_str = bounded_text(request.form.get("start_time"), 16)
         end_str = bounded_text(request.form.get("end_time"), 16)
@@ -83,6 +87,14 @@ def rsvp_session(session_id):
     if not current_user.profile_complete:
         flash("Please complete your profile before doing that.")
         return redirect(url_for("profiles.edit_profile"))
+
+    if target_session.deleted_at is not None:
+        flash("This session is no longer available.")
+        return redirect(url_for("offers.offer_detail", offer_id=offer.id))
+
+    if offer.approval_status != "approved":
+        flash("This offer is not currently approved for student access.")
+        return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
     if target_session.is_cancelled:
         flash("This session has been cancelled.")
@@ -249,8 +261,10 @@ def add_recording(session_id):
             return redirect(url_for("sessions.add_recording", session_id=target_session.id))
 
         target_session.recording_url = url
+        target_session.recording_approval_status = "submitted"
+        target_session.recording_review_note = None
         db.session.commit()
-        flash("Recording added — thanks for keeping the class verified!")
+        flash("Recording submitted for admin review.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
     return render_template("add_recording.html", session=target_session, offer=offer)
@@ -301,7 +315,7 @@ def session_history():
     taught_sessions = (
         Session.query
         .join(Offer)
-        .filter(Offer.teacher_id == current_user.id)
+        .filter(Offer.teacher_id == current_user.id, Session.deleted_at.is_(None))
         .order_by(Session.start_time.desc())
         .all()
     )
@@ -309,7 +323,7 @@ def session_history():
     attended_sessions = (
         Session.query
         .join(Enrollment)
-        .filter(Enrollment.student_id == current_user.id)
+        .filter(Enrollment.student_id == current_user.id, Session.deleted_at.is_(None))
         .order_by(Session.start_time.desc())
         .all()
     )

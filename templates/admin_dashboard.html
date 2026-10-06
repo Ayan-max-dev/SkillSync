@@ -1,81 +1,92 @@
 {% extends "base.html" %}
 {% block title %}Admin Dashboard — SkillSync{% endblock %}
-
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="fw-bold mb-1">Admin Dashboard</h2>
-        <p class="text-muted mb-0">Review reports, content, and school accounts.</p>
+        <p class="text-muted mb-0">Review content, approvals, reports, users and session activity.</p>
     </div>
+</div>
+
+<h4 class="fw-bold">Offers Awaiting Review</h4>
+<div class="row g-3 mb-5">
+{% for offer in pending_offers %}
+    <div class="col-md-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <h5 class="fw-bold mb-1">{{ offer.title }}</h5>
+                    <span class="badge bg-{{ 'warning text-dark' if offer.approval_status == 'pending' else 'danger' }}">{{ offer.approval_status }}</span>
+                </div>
+                <div class="text-muted small mb-2">{{ offer.skill.name }} · {{ offer.level }} · {{ offer.format }} · by {{ offer.teacher.name }}</div>
+                <p class="mb-2">{{ offer.description }}</p>
+                {% if offer.material_file or offer.material_url %}
+                    <div class="mb-3">
+                        {% if offer.material_file %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('offers.offer_material', offer_id=offer.id) }}" target="_blank">View PDF</a>{% endif %}
+                        {% if offer.material_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ offer.material_url }}" target="_blank" rel="noopener">Open Link</a>{% endif %}
+                    </div>
+                {% endif %}
+                <form method="POST" action="{{ url_for('admin.review_offer', offer_id=offer.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <textarea name="review_note" class="form-control form-control-sm mb-2" rows="2" placeholder="Optional rejection note"></textarea>
+                    <div class="d-flex gap-2">
+                        <button name="action" value="approve" class="btn btn-sm btn-success">Approve & Publish</button>
+                        <button name="action" value="reject" class="btn btn-sm btn-outline-danger">Reject</button>
+                        <a href="{{ url_for('offers.offer_detail', offer_id=offer.id) }}" class="btn btn-sm btn-outline-secondary">View</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% else %}<p class="text-muted">No offers are waiting for review.</p>{% endfor %}
+</div>
+
+<h4 class="fw-bold">Recordings Awaiting Review</h4>
+<div class="row g-3 mb-5">
+{% for session in pending_recordings %}
+    <div class="col-md-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <h5 class="fw-bold mb-1">{{ session.offer.title }}</h5>
+                <div class="text-muted small mb-2">{{ session.start_time.strftime('%b %d, %Y — %I:%M %p') }} · {{ session.offer.teacher.name }}</div>
+                <a href="{{ session.recording_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary mb-3">Open Recording</a>
+                {% if session.recording_review_note %}<div class="alert alert-danger py-2 small">Previous review: {{ session.recording_review_note }}</div>{% endif %}
+                <form method="POST" action="{{ url_for('admin.review_recording', session_id=session.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <textarea name="review_note" class="form-control form-control-sm mb-2" rows="2" placeholder="Optional rejection note"></textarea>
+                    <button name="action" value="approve" class="btn btn-sm btn-success">Approve Recording</button>
+                    <button name="action" value="reject" class="btn btn-sm btn-outline-danger">Reject</button>
+                </form>
+            </div>
+        </div>
+    </div>
+{% else %}<p class="text-muted">No recordings are waiting for review.</p>{% endfor %}
 </div>
 
 <h4 class="fw-bold">Reports</h4>
 <div class="mb-3">
-    <a class="btn btn-sm {{ 'btn-primary' if status_filter == 'open' else 'btn-outline-primary' }}" href="{{ url_for('admin.dashboard', status='open') }}">Open</a>
-    <a class="btn btn-sm {{ 'btn-primary' if status_filter == 'resolved' else 'btn-outline-primary' }}" href="{{ url_for('admin.dashboard', status='resolved') }}">Resolved</a>
-    <a class="btn btn-sm {{ 'btn-primary' if status_filter == 'dismissed' else 'btn-outline-primary' }}" href="{{ url_for('admin.dashboard', status='dismissed') }}">Dismissed</a>
-    <a class="btn btn-sm {{ 'btn-primary' if status_filter == 'restored' else 'btn-outline-primary' }}" href="{{ url_for('admin.dashboard', status='restored') }}">Restored</a>
-    <a class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' else 'btn-outline-primary' }}" href="{{ url_for('admin.dashboard', status='all') }}">All</a>
+{% for value in ['open','resolved','dismissed','restored','all'] %}<a class="btn btn-sm {{ 'btn-primary' if status_filter == value else 'btn-outline-primary' }}" href="{{ url_for('admin.dashboard', status=value) }}">{{ value|capitalize }}</a>{% endfor %}
 </div>
-
 <div class="list-group mb-5">
-    {% for report in reports %}
-        <a href="{{ url_for('admin.report_detail', report_id=report.id) }}" class="list-group-item list-group-item-action">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <strong>{{ report.target_label }}</strong>
-                    <div class="small text-muted">Reported by {{ report.reporter.name }} · {{ report.created_at.strftime('%b %d, %Y — %I:%M %p') }}</div>
-                    <div class="small mt-1">{{ report.reason }}</div>
-                </div>
-                <span class="badge bg-{{ 'warning text-dark' if report.status == 'open' else ('success' if report.status == 'resolved' else ('info text-dark' if report.status == 'restored' else 'secondary')) }}">{{ report.status }}</span>
-            </div>
-        </a>
-    {% else %}
-        <p class="text-muted">No reports in this view.</p>
-    {% endfor %}
+{% for report in reports %}
+<a href="{{ url_for('admin.report_detail', report_id=report.id) }}" class="list-group-item list-group-item-action">
+<strong>{{ report.target_label }}</strong><div class="small text-muted">Reported by {{ report.reporter.name }} · {{ report.created_at.strftime('%b %d, %Y — %I:%M %p') }}</div><div class="small mt-1">{{ report.reason }}</div>
+</a>
+{% else %}<p class="text-muted">No reports in this view.</p>{% endfor %}
 </div>
 
 <h4 class="fw-bold">Users</h4>
 <div class="list-group mb-5">
-    {% for user in users %}
-        <div class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-                <strong>{{ user.name }}</strong>
-                <div class="small text-muted">{{ user.email }}{% if user.grade %} · {{ user.grade }}{% endif %}</div>
-            </div>
-            {% if user.is_admin %}
-                <span class="badge bg-primary">Admin</span>
-            {% else %}
-                <form method="POST" action="{{ url_for('admin.promote_user', user_id=user.id) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-outline-primary">Promote to Admin</button>
-                </form>
-            {% endif %}
-        </div>
-    {% endfor %}
+{% for user in users %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ user.name }}</strong><div class="small text-muted">{{ user.email }}{% if user.grade %} · {{ user.grade }}{% endif %}</div></div>{% if user.is_admin %}<span class="badge bg-primary">Admin</span>{% else %}<form method="POST" action="{{ url_for('admin.promote_user', user_id=user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-primary">Promote to Admin</button></form>{% endif %}</div>{% endfor %}
 </div>
 
-<h4 class="fw-bold">Offers</h4>
+<h4 class="fw-bold">Session Management</h4>
 <div class="list-group mb-5">
-    {% for offer in offers %}
-        <a href="{{ url_for('offers.offer_detail', offer_id=offer.id) }}" class="list-group-item list-group-item-action d-flex justify-content-between">
-            <span><strong>{{ offer.title }}</strong> <span class="text-muted">— {{ offer.teacher.name }}</span></span>
-            <span class="badge bg-{{ 'warning text-dark' if offer.status == 'hidden' else 'success' }}">{{ offer.status }}</span>
-        </a>
-    {% else %}
-        <p class="text-muted">No offers.</p>
-    {% endfor %}
+{% for session in sessions %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ session.offer.title }}</strong><div class="small text-muted">{{ session.start_time.strftime('%b %d, %Y — %I:%M %p') }} · {{ session.offer.teacher.name }}{% if session.deleted_at %} · removed{% endif %}</div></div>{% if session.deleted_at %}<span class="badge bg-secondary">Removed</span>{% else %}<form method="POST" action="{{ url_for('admin.delete_session', session_id=session.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this session? Its history will be preserved.');">Remove Session</button></form>{% endif %}</div>{% else %}<p class="text-muted">No sessions.</p>{% endfor %}
 </div>
 
-<h4 class="fw-bold">Requests</h4>
+<h4 class="fw-bold">Learning Requests</h4>
 <div class="list-group">
-    {% for req in requests %}
-        <div class="list-group-item d-flex justify-content-between">
-            <span><strong>{{ req.skill.name }}</strong> <span class="text-muted">— {{ req.student.name }}</span></span>
-            <span class="badge bg-{{ 'warning text-dark' if req.status == 'hidden' else 'success' }}">{{ req.status }}</span>
-        </div>
-    {% else %}
-        <p class="text-muted">No requests.</p>
-    {% endfor %}
+{% for req in requests %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ req.skill.name }}</strong><div class="small text-muted">{{ req.student.name }} · {{ req.status }}{% if req.deleted_at %} · removed{% endif %}</div></div>{% if req.deleted_at %}<span class="badge bg-secondary">Removed</span>{% else %}<form method="POST" action="{{ url_for('admin.delete_request', request_id=req.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this request? Its record will be preserved.');">Remove Request</button></form>{% endif %}</div>{% else %}<p class="text-muted">No requests.</p>{% endfor %}
 </div>
 {% endblock %}

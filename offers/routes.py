@@ -1,6 +1,9 @@
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
+from werkzeug.utils import secure_filename
+import os
+import secrets
 
 from models import Comment, Lesson, Offer, Request, Skill, db
 
@@ -34,12 +37,34 @@ def valid_url(value, max_length=300):
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+def save_material(uploaded_file):
+    if not uploaded_file or not uploaded_file.filename:
+        return None, None
+    original = secure_filename(uploaded_file.filename)
+    if not original or not original.lower().endswith(".pdf"):
+        return None, "Only PDF files are allowed."
+    uploaded_file.stream.seek(0)
+    header = uploaded_file.stream.read(5)
+    uploaded_file.stream.seek(0)
+    if header != b"%PDF-":
+        return None, "The uploaded file is not a valid PDF."
+    folder = current_app.config["MATERIAL_UPLOAD_FOLDER"]
+    os.makedirs(folder, exist_ok=True)
+    stored = f"{secrets.token_hex(16)}.pdf"
+    uploaded_file.save(os.path.join(folder, stored))
+    return (stored, original), None
+
+
 @offers_bp.route("/offers/<int:offer_id>")
 def offer_detail(offer_id):
     offer = Offer.query.get_or_404(offer_id)
 
     # Hidden offers are visible only to administrators after moderation.
     if offer.status == "hidden" and not (current_user.is_authenticated and current_user.is_admin):
+        abort(404)
+    if offer.approval_status != "approved" and not (
+        current_user.is_authenticated and (current_user.is_admin or current_user.id == offer.teacher_id)
+    ):
         abort(404)
 
     return render_template("offer_detail.html", offer=offer)
@@ -76,9 +101,22 @@ def delete_offer(offer_id):
 @offers_bp.route("/offers/new", methods=["GET", "POST"])
 @login_required
 def new_offer():
+    return _save_offer()
+
+
+@offers_bp.route("/offers/<int:offer_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_offer(offer_id):
+    offer = Offer.query.get_or_404(offer_id)
+    if offer.teacher_id != current_user.id:
+        abort(403)
+    return _save_offer(offer)
+
+
+def _save_offer(existing=None):
     request_id = request.values.get("request_id", type=int)
     fulfilling_request = Request.query.get(request_id) if request_id else None
-    offer_format = request.values.get("format", "live")
+    offer_format = request.values.get("format", existing.format if existing else "live")
     if offer_format not in ALLOWED_FORMATS:
         offer_format = "live"
 
@@ -90,18 +128,47 @@ def new_offer():
         level = request.form.get("level")
         format_choice = request.form.get("format", "live")
         max_attendees = positive_int(request.form.get("max_attendees", 10))
+        material_url = bounded_text(request.form.get("material_url"), 500)
+        material_file = request.files.get("material_file")
 
         if (not skill_name or category not in ALLOWED_CATEGORIES or not title or
-                description is None or level not in ALLOWED_LEVELS or
-                format_choice not in ALLOWED_FORMATS or max_attendees is None):
-            flash("Enter valid offer details, level, format, and attendee limit.")
-            return redirect(url_for("offers.new_offer"))
+                not description or level not in ALLOWED_LEVELS or
+                format_choice not in ALLOWED_FORMATS or max_attendees is None or
+                (material_url and not valid_url(material_url, 500))):
+            flash("Enter a title, description, valid skill details, level, and attendee limit.")
+            target = existing.id if existing else None
+            return redirect(url_for("offers.edit_offer", offer_id=target) if target else url_for("offers.new_offer"))
+
+        saved_material = None
+        if material_file and material_file.filename:
+            saved_material, material_error = save_material(material_file)
+            if material_error:
+                flash(material_error)
+                target = existing.id if existing else None
+                return redirect(url_for("offers.edit_offer", offer_id=target) if target else url_for("offers.new_offer"))
 
         skill = Skill.query.filter(db.func.lower(Skill.name) == skill_name.lower()).first()
         if not skill:
             skill = Skill(name=skill_name, category=category)
             db.session.add(skill)
             db.session.flush()
+
+        if existing:
+            offer = existing
+            offer.skill_id = skill.id
+            offer.title = title
+            offer.description = description
+            offer.level = level
+            offer.max_attendees = max_attendees if format_choice == "live" else 0
+            offer.format = format_choice
+            offer.material_url = material_url
+            if saved_material:
+                offer.material_file, offer.material_name = saved_material
+            offer.approval_status = "pending"
+            offer.approval_note = None
+            db.session.commit()
+            flash("Your changes were submitted for admin review.")
+            return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
         offer = Offer(
             teacher_id=current_user.id,
@@ -111,20 +178,35 @@ def new_offer():
             level=level,
             max_attendees=max_attendees if format_choice == "live" else 0,
             format=format_choice,
+            approval_status="pending",
+            material_url=material_url,
         )
+        if saved_material:
+            offer.material_file, offer.material_name = saved_material
         db.session.add(offer)
 
         if fulfilling_request:
             fulfilling_request.status = "fulfilled"
 
         db.session.commit()
-        flash("Your offer has been posted!")
+        flash("Your offer was submitted for admin review.")
 
         if format_choice == "recorded":
             return redirect(url_for("offers.manage_lessons", offer_id=offer.id))
-        return redirect(url_for("main.explore"))
+        return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
-    return render_template("new_offer.html", fulfilling_request=fulfilling_request, offer_format=offer_format)
+    return render_template("new_offer.html", fulfilling_request=fulfilling_request, offer_format=offer_format, offer=existing, editing=bool(existing))
+
+
+@offers_bp.route("/offers/<int:offer_id>/material")
+@login_required
+def offer_material(offer_id):
+    offer = Offer.query.get_or_404(offer_id)
+    if offer.approval_status != "approved" and not (current_user.is_admin or current_user.id == offer.teacher_id):
+        abort(404)
+    if not offer.material_file:
+        abort(404)
+    return send_from_directory(current_app.config["MATERIAL_UPLOAD_FOLDER"], offer.material_file, as_attachment=False)
 
 
 @offers_bp.route("/offers/<int:offer_id>/lessons", methods=["GET", "POST"])
@@ -151,8 +233,12 @@ def manage_lessons(offer_id):
         next_order = len(offer.lessons)
         lesson = Lesson(offer_id=offer.id, title=lesson_title, video_url=video_url, order=next_order)
         db.session.add(lesson)
+        # Any new recorded-course lesson must be reviewed again before the course is public.
+        if offer.approval_status == "approved":
+            offer.approval_status = "pending"
+            offer.approval_note = None
         db.session.commit()
-        flash("Lesson added!")
+        flash("Lesson added. The course has been sent for admin review again.")
         return redirect(url_for("offers.manage_lessons", offer_id=offer.id))
 
     sorted_lessons = sorted(offer.lessons, key=lambda l: l.order)

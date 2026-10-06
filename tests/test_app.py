@@ -297,8 +297,10 @@ def test_request_owner_can_delete_request_and_upvotes_but_not_skill(client):
     response = client.post(f"/requests/{request_id}/delete")
 
     assert response.status_code == 302
-    assert db.session.get(Request, request_id) is None
-    assert db.session.get(RequestUpvote, upvote_id) is None
+    saved_request = db.session.get(Request, request_id)
+    assert saved_request is not None
+    assert saved_request.deleted_at is not None
+    assert db.session.get(RequestUpvote, upvote_id) is not None
     assert db.session.get(Skill, skill_id) is not None
 
 
@@ -474,3 +476,71 @@ def test_duplicate_upvote_rejected(client):
         db.session.commit()
 
     db.session.rollback()
+
+
+def test_new_offer_starts_pending_and_is_not_in_explore(client):
+    teacher = _create_user("Teacher", "teacher2@example.com")
+    teacher.grade = "10"
+    teacher.courses_completed = "Math"
+    db.session.commit()
+    _login(client, teacher.email)
+    response = client.post("/offers/new", data={
+        "skill_name": "Python", "category": "Academic", "title": "Python Basics",
+        "description": "I will teach Python basics", "level": "Beginner",
+        "format": "live", "max_attendees": "10"
+    }, follow_redirects=False)
+    assert response.status_code == 302
+    offer = Offer.query.filter_by(title="Python Basics").one()
+    assert offer.approval_status == "pending"
+    explore = client.get("/explore")
+    assert b"Python Basics" not in explore.data
+
+
+def test_admin_can_approve_offer(client):
+    teacher = _create_user("Teacher", "teacher3@example.com")
+    admin = _create_user("Admin", "admin3@example.com")
+    admin.is_admin = True
+    skill = Skill(name="Chess", category="Non-academic")
+    db.session.add(skill); db.session.commit()
+    offer = Offer(teacher_id=teacher.id, skill_id=skill.id, title="Chess", description="Chess basics", level="Beginner", approval_status="pending")
+    db.session.add(offer); db.session.commit()
+    _login(client, admin.email)
+    response = client.post(f"/admin/offers/{offer.id}/review", data={"action":"approve"})
+    assert response.status_code == 302
+    assert db.session.get(Offer, offer.id).approval_status == "approved"
+
+
+def test_recording_requires_admin_approval_for_completion(client):
+    teacher = _create_user("Teacher", "teacher4@example.com")
+    student = _create_user("Student", "student4@example.com")
+    skill = Skill(name="Python", category="Academic")
+    db.session.add(skill); db.session.commit()
+    offer = Offer(teacher_id=teacher.id, skill_id=skill.id, title="Python", description="Learn Python", level="Beginner", approval_status="approved")
+    db.session.add(offer); db.session.commit()
+    session = Session(offer_id=offer.id, start_time=datetime.now()-timedelta(hours=2), end_time=datetime.now()-timedelta(hours=1), recording_url="https://example.com/recording", recording_approval_status="submitted")
+    db.session.add(session); db.session.commit()
+    enrollment = Enrollment(session_id=session.id, student_id=student.id, status="confirmed", attended=True)
+    db.session.add(enrollment); db.session.commit()
+    assert session.is_completed is False
+    admin = _create_user("Admin", "admin4@example.com"); admin.is_admin = True; db.session.commit()
+    _login(client, admin.email)
+    response = client.post(f"/admin/sessions/{session.id}/recording-review", data={"action":"approve"})
+    assert response.status_code == 302
+    assert db.session.get(Session, session.id).recording_approval_status == "approved"
+    assert db.session.get(Session, session.id).is_completed is True
+
+
+def test_admin_soft_deletes_session(client):
+    teacher = _create_user("Teacher", "teacher5@example.com")
+    admin = _create_user("Admin", "admin5@example.com"); admin.is_admin = True
+    skill = Skill(name="Chess", category="Non-academic")
+    db.session.add(skill); db.session.commit()
+    offer = Offer(teacher_id=teacher.id, skill_id=skill.id, title="Chess", description="Chess", level="Beginner", approval_status="approved")
+    db.session.add(offer); db.session.commit()
+    session = Session(offer_id=offer.id, start_time=datetime.now()+timedelta(hours=1), end_time=datetime.now()+timedelta(hours=2))
+    db.session.add(session); db.session.commit()
+    _login(client, admin.email)
+    response = client.post(f"/admin/sessions/{session.id}/delete")
+    assert response.status_code == 302
+    saved = db.session.get(Session, session.id)
+    assert saved is not None and saved.deleted_at is not None

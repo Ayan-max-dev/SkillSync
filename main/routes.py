@@ -111,7 +111,7 @@ def explore():
     offers_query = (
         Offer.query
         .join(Skill)
-        .filter(Offer.status == "open")
+        .filter(Offer.status == "open", Offer.approval_status == "approved")
         .options(
             selectinload(Offer.sessions).selectinload(Session.enrollments),
             selectinload(Offer.sessions).selectinload(Session.feedback),
@@ -122,7 +122,7 @@ def explore():
     requests_query = (
         Request.query
         .join(Skill)
-        .filter(Request.status == "open")
+        .filter(Request.status == "open", Request.deleted_at.is_(None))
         .options(
             selectinload(Request.upvotes),
             selectinload(Request.skill)

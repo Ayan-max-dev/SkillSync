@@ -1,6 +1,7 @@
+from datetime import datetime
+
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy.exc import IntegrityError
 
 from models import Request, RequestUpvote, Skill, db
 
@@ -25,7 +26,7 @@ def search_similar_requests():
     matches = (
         Request.query
         .join(Skill)
-        .filter(Request.status == "open")
+        .filter(Request.status == "open", Request.deleted_at.is_(None))
         .filter(Skill.name.ilike(f"%{query}%"))
         .limit(5)
         .all()
@@ -81,6 +82,10 @@ def new_request():
 def upvote_request(request_id):
     learning_request = Request.query.get_or_404(request_id)
 
+    if learning_request.deleted_at is not None:
+        flash("This request is no longer available.")
+        return redirect(url_for("main.explore"))
+
     if learning_request.student_id == current_user.id:
         flash("You can't upvote your own request.")
         return redirect(url_for("main.explore"))
@@ -114,15 +119,12 @@ def delete_request(request_id):
     if current_user.id != learning_request.student_id:
         abort(403)
 
-    try:
-        for upvote in learning_request.upvotes:
-            db.session.delete(upvote)
-        db.session.delete(learning_request)
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        flash("This request could not be deleted safely.")
+    if learning_request.deleted_at is not None:
+        flash("Request is already deleted.")
         return redirect(url_for("main.explore"))
 
+    learning_request.deleted_at = datetime.now()
+    learning_request.deleted_by_id = current_user.id
+    db.session.commit()
     flash("Request deleted.")
     return redirect(url_for("main.explore"))

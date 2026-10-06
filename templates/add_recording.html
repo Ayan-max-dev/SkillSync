@@ -23,10 +23,13 @@
                                value="{{ session.recording_url or '' }}"
                                placeholder="Zoom cloud recording or Google Drive link" required>
                         <div class="form-text">
-                            Paste the shareable link from Zoom/Meet's cloud recording. This becomes visible to other students as verified, on-demand content.
+                            Paste the shareable link from Zoom/Meet's cloud recording. The recording will be visible to students only after an administrator approves it.
                         </div>
+                        {% if session.recording_review_note %}
+                            <div class="alert alert-warning mt-3 mb-0">{{ session.recording_review_note }}</div>
+                        {% endif %}
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">Save Recording</button>
+                    <button type="submit" class="btn btn-primary w-100">Submit Recording for Review</button>
                 </form>
             </div>
         </div>

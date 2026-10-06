@@ -6,8 +6,8 @@
     <div class="col-md-6">
         <div class="card shadow-sm mt-4">
             <div class="card-body p-4">
-                <h3 class="card-title mb-1 fw-bold">Offer to teach a skill</h3>
-                <p class="text-muted mb-4">Let others know what you can teach.</p>
+                <h3 class="card-title mb-1 fw-bold">{{ "Edit offer" if editing else "Offer to teach a skill" }}</h3>
+                <p class="text-muted mb-4">{{ "Update your offer and resubmit it for admin review." if editing else "Your offer will be reviewed by an administrator before it appears on Explore." }}</p>
 
                 {% with messages = get_flashed_messages() %}
                     {% if messages %}
@@ -15,7 +15,7 @@
                     {% endif %}
                 {% endwith %}
 
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label class="form-label d-block">Format</label>
@@ -37,7 +37,7 @@
                     <div class="mb-3">
                         <label class="form-label">Skill name</label>
                         <input type="text" name="skill_name" class="form-control"
-                               value="{{ fulfilling_request.skill.name if fulfilling_request else '' }}"
+                               value="{{ offer.skill.name if editing and offer else (fulfilling_request.skill.name if fulfilling_request else '') }}"
                                placeholder="e.g. Guitar, Calculus, Rubik's Cube" required>
                     </div>
                     <div class="mb-3">
@@ -49,23 +49,32 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Session title</label>
-                        <input type="text" name="title" class="form-control" placeholder="e.g. Intro to Fingerpicking" required>
+                        <input type="text" name="title" class="form-control" placeholder="e.g. Intro to Fingerpicking" value="{{ offer.title if editing and offer else '' }}" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Description</label>
-                        <textarea name="description" class="form-control" rows="3" placeholder="What will you cover?"></textarea>
+                        <textarea name="description" class="form-control" rows="4" placeholder="What will you cover?" required>{{ offer.description if editing and offer else '' }}</textarea>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Level</label>
                         <select name="level" class="form-select" required>
-                            <option value="Beginner">Beginner</option>
-                            <option value="Intermediate">Intermediate</option>
-                            <option value="Advanced">Advanced</option>
+                            <option value="Beginner" {% if editing and offer.level == "Beginner" %}selected{% endif %}>Beginner</option>
+                            <option value="Intermediate" {% if editing and offer.level == "Intermediate" %}selected{% endif %}>Intermediate</option>
+                            <option value="Advanced" {% if editing and offer.level == "Advanced" %}selected{% endif %}>Advanced</option>
                         </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teaching material <span class="text-muted">(optional)</span></label>
+                        <input type="file" name="material_file" class="form-control" accept="application/pdf,.pdf">
+                        <div class="form-text">Upload a PDF, or provide a Google Slides/other shareable link below. Maximum PDF size: 5 MB.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Material link <span class="text-muted">(optional)</span></label>
+                        <input type="url" name="material_url" class="form-control" value="{{ offer.material_url if editing and offer else '' }}" placeholder="https://docs.google.com/...">
                     </div>
                     <div class="mb-3" id="max_attendees_field">
                         <label class="form-label">Max attendees</label>
-                        <input type="number" name="max_attendees" class="form-control" value="10" min="1" max="50">
+                        <input type="number" name="max_attendees" class="form-control" value="{{ offer.max_attendees if editing and offer and offer.max_attendees else 10 }}" min="1" max="50">
                     </div>
 
                     <script>
@@ -76,7 +85,7 @@
                         });
                     });
                     </script>
-                    <button type="submit" class="btn btn-primary w-100">Post Offer</button>
+                    <button type="submit" class="btn btn-primary w-100">{{ "Resubmit for Review" if editing else "Submit for Review" }}</button>
                 </form>
             </div>
         </div>
