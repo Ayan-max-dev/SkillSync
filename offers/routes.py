@@ -206,7 +206,7 @@ def offer_material(offer_id):
         abort(404)
     if not offer.material_file:
         abort(404)
-    return send_from_directory(current_app.config["MATERIAL_UPLOAD_FOLDER"], offer.material_file, as_attachment=False)
+    return send_from_directory(current_app.config["MATERIAL_UPLOAD_FOLDER"], offer.material_file, download=False, as_attachment=False)
 
 
 @offers_bp.route("/offers/<int:offer_id>/lessons", methods=["GET", "POST"])

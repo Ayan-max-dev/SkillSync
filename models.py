@@ -204,16 +204,8 @@ class Request(db.Model):
     deleted_at = db.Column(db.DateTime, nullable=True)
     deleted_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
 
-    student = db.relationship(
-    "User",
-    foreign_keys=[student_id],
-    backref="requests"
-    )
-    skill = db.relationship(
-        "Skill",
-        foreign_keys=[skill_id],
-        backref="requests"
-    )
+    student = db.relationship("User", foreign_keys=[student_id], backref="requests")
+    skill = db.relationship("Skill", backref="requests")
 
 class Session(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -336,6 +328,22 @@ class Feedback(db.Model):
     student = db.relationship("User", backref="feedback_given")
 
     
+class Certificate(db.Model):
+    """A single admin-issued contribution certificate per teaching session."""
+    id = db.Column(db.Integer, primary_key=True)
+    certificate_code = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("session.id"), unique=True, nullable=False)
+    recipient_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    issued_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    issued_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    revocation_reason = db.Column(db.String(500), nullable=True)
+
+    session = db.relationship("Session", backref=db.backref("certificate", uselist=False))
+    recipient = db.relationship("User", foreign_keys=[recipient_id], backref="certificates_received")
+    issued_by = db.relationship("User", foreign_keys=[issued_by_id], backref="certificates_issued")
+
+
 class RequestUpvote(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     request_id = db.Column(db.Integer, db.ForeignKey("request.id"), nullable=False)

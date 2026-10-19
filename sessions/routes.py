@@ -5,10 +5,27 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 
-from models import Enrollment, Feedback, Notification, Offer, Session, db
+from models import Enrollment, Feedback, Notification, Offer, Session, User, db
 
 
 sessions_bp = Blueprint("sessions", __name__)
+
+
+def notify_admins_if_review_ready(target_session):
+    """Notify admins once when a session has ended, attendance is complete, and recording is submitted."""
+    if target_session.is_cancelled or target_session.deleted_at is not None or not target_session.has_ended:
+        return
+    confirmed = [e for e in target_session.enrollments if e.status == "confirmed"]
+    if not confirmed or any(e.attended is None for e in confirmed):
+        return
+    if target_session.recording_approval_status != "submitted" or not target_session.recording_url:
+        return
+    message = f"Session '{target_session.offer.title}' is ready for review and certificate consideration."
+    link = url_for("admin.review_session_detail", session_id=target_session.id)
+    for admin_user in User.query.filter_by(is_admin=True).all():
+        exists = Notification.query.filter_by(user_id=admin_user.id, category="moderation", message=message, link=link).first()
+        if not exists:
+            db.session.add(Notification(user_id=admin_user.id, category="moderation", message=message, link=link))
 
 
 def bounded_text(value, max_length):
@@ -227,6 +244,7 @@ def mark_attendance(session_id):
                     message=f"How was {offer.title}? Leave feedback for the teacher.",
                     link=url_for("sessions.session_feedback", session_id=target_session.id),
                 ))
+        notify_admins_if_review_ready(target_session)
         db.session.commit()
         flash("Attendance updated!")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
@@ -263,6 +281,7 @@ def add_recording(session_id):
         target_session.recording_url = url
         target_session.recording_approval_status = "submitted"
         target_session.recording_review_note = None
+        notify_admins_if_review_ready(target_session)
         db.session.commit()
         flash("Recording submitted for admin review.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))

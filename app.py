@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 from main.routes import main_bp
 from admin.routes import admin_bp
 from reports.routes import reports_bp
+from certificates.routes import certificates_bp
 
 
 def create_app(test_config=None):
@@ -44,6 +45,7 @@ def create_app(test_config=None):
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(certificates_bp)
 
     login_manager.login_view = "auth.login"
 

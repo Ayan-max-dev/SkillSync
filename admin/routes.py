@@ -1,10 +1,11 @@
 from datetime import datetime
+import secrets
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 from sqlalchemy.orm import selectinload
 
-from models import Offer, Report, Request as LearningRequest, Session, User, Notification, db
+from models import Certificate, Enrollment, Offer, Report, Request as LearningRequest, Session, User, Notification, db
 
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -146,7 +147,9 @@ def review_recording(session_id):
         flash("Recording rejected and returned to the teacher.")
     else:
         flash("Choose a valid review action.")
-    return redirect(url_for("admin.dashboard"))
+    return redirect(
+        url_for("admin.review_session_detail", session_id=session_id)
+    )
 
 
 @admin_bp.route("/sessions/<int:session_id>/delete", methods=["POST"])
@@ -242,3 +245,88 @@ def restore_report(report_id):
     db.session.commit()
     flash("Content restored and is visible again.")
     return redirect(url_for("admin.report_detail", report_id=report.id))
+
+
+@admin_bp.route("/sessions/<int:session_id>/review")
+def review_session_detail(session_id):
+    target_session = Session.query.get_or_404(session_id)
+    if target_session.deleted_at is not None:
+        flash("This session has been removed and cannot be approved for a certificate.")
+        return redirect(url_for("admin.dashboard"))
+    confirmed = [e for e in target_session.enrollments if e.status == "confirmed"]
+    attendance_complete = bool(confirmed) and all(e.attended is not None for e in confirmed)
+    open_reports = Report.query.filter_by(session_id=target_session.id, status="open").order_by(Report.created_at.desc()).all()
+    return render_template(
+        "admin_session_review.html", session=target_session, confirmed_enrollments=confirmed,
+        attendance_complete=attendance_complete, open_reports=open_reports,
+        existing_certificate=Certificate.query.filter_by(session_id=target_session.id).first(),
+    )
+
+
+@admin_bp.route("/sessions/<int:session_id>/issue-certificate", methods=["POST"])
+def issue_certificate(session_id):
+    target_session = Session.query.get_or_404(session_id)
+    offer = target_session.offer
+    confirmed = [e for e in target_session.enrollments if e.status == "confirmed"]
+    if target_session.deleted_at is not None or target_session.is_cancelled or not target_session.has_ended:
+        flash("Only ended, active sessions can receive a certificate.")
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+    if offer.approval_status != "approved":
+        flash("The skill offer must be approved first.")
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+    if not confirmed or any(e.attended is None for e in confirmed):
+        flash("Attendance must be fully marked for at least one confirmed learner.")
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+    if (
+        not target_session.recording_url
+        or target_session.recording_approval_status not in {"submitted", "approved"}
+    ):
+        flash(
+            "The teacher must submit a recording before you can approve the session and issue its certificate."
+        )
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+    if Report.query.filter_by(session_id=target_session.id, status="open").count():
+        flash("Resolve open reports about this session before issuing its certificate.")
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+    existing = Certificate.query.filter_by(session_id=target_session.id).first()
+    if existing:
+        flash("A certificate has already been issued for this session.")
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+
+    # Approve the recording and issue the certificate in one admin action.
+    recording_was_not_approved = (
+        target_session.recording_approval_status != "approved"
+    )
+    target_session.recording_approval_status = "approved"
+    target_session.recording_review_note = None
+
+    code = f"SS-{target_session.start_time.year}-{secrets.token_hex(4).upper()}"
+    certificate = Certificate(
+        certificate_code=code, session_id=target_session.id,
+        recipient_id=offer.teacher_id, issued_by_id=current_user.id,
+    )
+    db.session.add(certificate)
+    db.session.add(Notification(
+        user_id=offer.teacher_id, category="certificate",
+        message=f"Your SkillSync Certificate of Contribution for '{offer.title}' has been issued.",
+        link=url_for("certificates.my_certificates"),
+    ))
+    if recording_was_not_approved:
+        for enrollment in confirmed:
+            db.session.add(Notification(
+                user_id=enrollment.student_id,
+                category="moderation",
+                message=(
+                    f"The recording for '{offer.title}' was approved "
+                    "by the session reviewer."
+                ),
+                link=url_for("offers.offer_detail", offer_id=offer.id),
+            ))
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash("A certificate already exists for this session. Refresh the review page.")
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+    flash("Certificate issued. The teacher can download the PDF from My Certificates.")
+    return redirect(url_for("admin.review_session_detail", session_id=session_id))

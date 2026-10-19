@@ -226,6 +226,7 @@
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li><a class="dropdown-item" href="{{ url_for('profiles.my_profile') }}">Profile</a></li>
                                 <li><a class="dropdown-item" href="{{ url_for('sessions.session_history') }}">Sessions</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('certificates.my_certificates') }}">My Certificates</a></li>
                                 {% if current_user.is_admin %}
                                     <li><a class="dropdown-item" href="{{ url_for('admin.dashboard') }}">Admin</a></li>
                                 {% endif %}

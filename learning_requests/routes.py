@@ -1,7 +1,6 @@
-from datetime import datetime
-
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 
 from models import Request, RequestUpvote, Skill, db
 
@@ -119,12 +118,15 @@ def delete_request(request_id):
     if current_user.id != learning_request.student_id:
         abort(403)
 
-    if learning_request.deleted_at is not None:
-        flash("Request is already deleted.")
+    try:
+        for upvote in learning_request.upvotes:
+            db.session.delete(upvote)
+        db.session.delete(learning_request)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash("This request could not be deleted safely.")
         return redirect(url_for("main.explore"))
 
-    learning_request.deleted_at = datetime.now()
-    learning_request.deleted_by_id = current_user.id
-    db.session.commit()
     flash("Request deleted.")
     return redirect(url_for("main.explore"))
