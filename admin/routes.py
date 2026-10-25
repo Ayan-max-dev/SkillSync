@@ -71,7 +71,13 @@ def dashboard():
         Session.recording_approval_status.in_(["submitted", "rejected"]),
         Session.deleted_at.is_(None),
     ).order_by(Session.end_time.desc()).all()
-    sessions = Session.query.join(Offer).order_by(Session.start_time.desc()).all()
+    sessions = (
+        Session.query
+        .join(Offer)
+        .filter(~Session.certificate.has())
+        .order_by(Session.start_time.desc())
+        .all()
+    )
 
     return render_template(
         "admin_dashboard.html",
