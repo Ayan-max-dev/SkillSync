@@ -1,9 +1,10 @@
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_from_directory, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 import os
 import secrets
+import zipfile
 
 from models import Comment, Lesson, Offer, Request, Skill, db
 
@@ -13,6 +14,13 @@ offers_bp = Blueprint("offers", __name__)
 ALLOWED_CATEGORIES = {"Academic", "Non-academic"}
 ALLOWED_FORMATS = {"live", "recorded"}
 ALLOWED_LEVELS = {"Beginner", "Intermediate", "Advanced"}
+MATERIAL_TYPES = {
+    ".pdf": ("application/pdf", "PDF"),
+    ".pptx": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "PowerPoint",
+    ),
+}
 
 
 def bounded_text(value, max_length):
@@ -41,16 +49,38 @@ def save_material(uploaded_file):
     if not uploaded_file or not uploaded_file.filename:
         return None, None
     original = secure_filename(uploaded_file.filename)
-    if not original or not original.lower().endswith(".pdf"):
-        return None, "Only PDF files are allowed."
+    extension = os.path.splitext(original)[1].lower() if original else ""
+    if extension not in MATERIAL_TYPES:
+        return None, "Only PDF and PPTX files are allowed."
+
+    max_size = current_app.config["MAX_CONTENT_LENGTH"]
+    uploaded_file.stream.seek(0, os.SEEK_END)
+    file_size = uploaded_file.stream.tell()
+    uploaded_file.stream.seek(0)
+    if file_size > max_size:
+        return None, "Each uploaded file must be 5 MB or smaller."
+
     uploaded_file.stream.seek(0)
     header = uploaded_file.stream.read(5)
     uploaded_file.stream.seek(0)
-    if header != b"%PDF-":
+    if extension == ".pdf" and header != b"%PDF-":
         return None, "The uploaded file is not a valid PDF."
+    if extension == ".pptx":
+        try:
+            with zipfile.ZipFile(uploaded_file.stream) as archive:
+                names = set(archive.namelist())
+                if "[Content_Types].xml" not in names or not any(
+                    name.startswith("ppt/") for name in names
+                ):
+                    return None, "The uploaded file is not a valid PPTX."
+        except (zipfile.BadZipFile, OSError):
+            return None, "The uploaded file is not a valid PPTX."
+        finally:
+            uploaded_file.stream.seek(0)
+
     folder = current_app.config["MATERIAL_UPLOAD_FOLDER"]
     os.makedirs(folder, exist_ok=True)
-    stored = f"{secrets.token_hex(16)}.pdf"
+    stored = f"{secrets.token_hex(16)}{extension}"
     uploaded_file.save(os.path.join(folder, stored))
     return (stored, original), None
 
@@ -206,7 +236,19 @@ def offer_material(offer_id):
         abort(404)
     if not offer.material_file:
         abort(404)
-    return send_from_directory(current_app.config["MATERIAL_UPLOAD_FOLDER"], offer.material_file, download=False, as_attachment=False)
+    material_path = os.path.join(
+        current_app.config["MATERIAL_UPLOAD_FOLDER"], offer.material_file
+    )
+    if not os.path.isfile(material_path):
+        abort(404)
+    extension = os.path.splitext(offer.material_file)[1].lower()
+    mimetype, _ = MATERIAL_TYPES.get(extension, ("application/octet-stream", "Material"))
+    return send_file(
+        material_path,
+        mimetype=mimetype,
+        as_attachment=extension == ".pptx",
+        download_name=offer.material_name or os.path.basename(material_path),
+    )
 
 
 @offers_bp.route("/offers/<int:offer_id>/lessons", methods=["GET", "POST"])

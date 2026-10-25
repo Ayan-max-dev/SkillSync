@@ -22,7 +22,7 @@
                 <p class="mb-2">{{ offer.description }}</p>
                 {% if offer.material_file or offer.material_url %}
                     <div class="mb-3">
-                        {% if offer.material_file %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('offers.offer_material', offer_id=offer.id) }}" target="_blank">View PDF</a>{% endif %}
+                        {% if offer.material_file %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('offers.offer_material', offer_id=offer.id) }}" target="_blank">{{ 'Download PPTX' if offer.material_name and offer.material_name.lower().endswith('.pptx') else 'View PDF' }}</a>{% endif %}
                         {% if offer.material_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ offer.material_url }}" target="_blank" rel="noopener">Open Link</a>{% endif %}
                     </div>
                 {% endif %}

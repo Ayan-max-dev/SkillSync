@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 import logging
 from flask import Flask, abort, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
+from werkzeug.exceptions import RequestEntityTooLarge
 from models import db, User, Skill, Offer, Request, Session, Enrollment, RequestUpvote, Feedback, Lesson, Comment, Notification, Report
 from config import Config
 from flask_migrate import Migrate
@@ -107,6 +108,11 @@ def forbidden(error):
 @app.errorhandler(404)
 def not_found(error):
     return render_template("404.html"), 404
+
+@app.errorhandler(RequestEntityTooLarge)
+def request_entity_too_large(error):
+    flash("Each uploaded file must be 5 MB or smaller.")
+    return redirect(request.referrer or url_for("auth.login"))
 
 
 if __name__ == "__main__":

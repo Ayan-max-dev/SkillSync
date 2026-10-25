@@ -16,7 +16,7 @@
             <div class="mb-4">
                 <strong>Teaching Material:</strong>
                 {% if offer.material_file %}
-                    <a href="{{ url_for('offers.offer_material', offer_id=offer.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary ms-2">View PDF{% if offer.material_name %} — {{ offer.material_name }}{% endif %}</a>
+                    <a href="{{ url_for('offers.offer_material', offer_id=offer.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary ms-2">{{ 'Download PPTX' if offer.material_name and offer.material_name.lower().endswith('.pptx') else 'View PDF' }}{% if offer.material_name %} — {{ offer.material_name }}{% endif %}</a>
                 {% endif %}
                 {% if offer.material_url %}
                     <a href="{{ offer.material_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-2">Open Material Link</a>
