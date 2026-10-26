@@ -19,7 +19,7 @@
 
 {% if not existing_certificate.revoked_at %}
 <a class="btn btn-outline-primary mb-4"
-   href="{{ url_for('certificates.download_certificate', certificate_id=existing_certificate.id) }}">
+   href="{{ url_for('certificates.download_certificate', certificate_id=existing_certificate.id, design='v2') }}">
     Download PDF
 </a>
 {% endif %}

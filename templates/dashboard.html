@@ -1,9 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — SkillShare{% endblock %}
+{% block title %}Dashboard — SkillSync{% endblock %}
 
 {% block content %}
-<h2 class="fw-bold">Welcome, {{ current_user.name }} 👋</h2>
-<p class="text-muted">What do you want to learn today?</p>
+<section class="hero-panel mb-4">
+    <div class="position-relative" style="z-index: 1;">
+        <div class="page-kicker mb-2" style="color: var(--color-yellow);">Your learning space</div>
+        <h1 class="fw-bold mb-2">Welcome back, {{ current_user.name }}!</h1>
+        <p class="mb-4 opacity-75">Share what you know, discover something new, and keep growing together.</p>
+        <div class="d-flex flex-wrap gap-2 dashboard-actions">
+            <a href="{{ url_for('offers.new_offer') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Offer a skill</a>
+            <a href="{{ url_for('requests.new_request') }}" class="btn btn-light"><i class="bi bi-chat-heart me-1"></i>Request a skill</a>
+            <a href="{{ url_for('main.explore') }}" class="btn btn-outline-light"><i class="bi bi-compass me-1"></i>Explore skills</a>
+        </div>
+    </div>
+</section>
 
 {% if sessions_needing_recording %}
     <div class="alert alert-warning">
@@ -34,13 +44,25 @@
     </div>
 {% endif %}
 
-<div class="d-flex gap-2 mb-4">
-    <a href="{{ url_for('offers.new_offer') }}" class="btn btn-outline-primary mt-2">Offer to Teach</a>
-    <a href="{{ url_for('main.explore') }}" class="btn btn-primary mt-2">Explore Skills</a>
-    <a href="{{ url_for('requests.new_request') }}" class="btn btn-outline-secondary mt-2">Request to Learn</a>
+<div class="row g-3 mb-5">
+    <div class="col-6 col-lg">
+        <div class="card stat-card surface-peach"><div class="stat-icon" style="background:#fff5ef;"><i class="bi bi-lightbulb"></i></div><div class="stat-card-content"><div class="stat-number">{{ stats.skills_taught }}</div><div class="stat-label">Skills taught</div></div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stat-card surface-mint"><div class="stat-icon" style="background:#f3fbf0;"><i class="bi bi-book"></i></div><div class="stat-card-content"><div class="stat-number">{{ stats.skills_learned }}</div><div class="stat-label">Skills learned</div></div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stat-card surface-yellow"><div class="stat-icon" style="background:#fff9e8;"><i class="bi bi-check2-circle"></i></div><div class="stat-card-content"><div class="stat-number">{{ stats.sessions_completed }}</div><div class="stat-label">Sessions completed</div></div></div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stat-card surface-teal"><div class="stat-icon" style="background:#f1fbf9;"><i class="bi bi-award"></i></div><div class="stat-card-content"><div class="stat-number">{{ stats.certificates }}</div><div class="stat-label">Certificates earned</div></div></div>
+    </div>
 </div>
 
-<h4 class="fw-bold mt-4">Your Offers</h4>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div><div class="page-kicker">Your activity</div><h4 class="fw-bold mb-0">Teaching offers</h4></div>
+    <a href="{{ url_for('offers.new_offer') }}" class="btn btn-sm btn-outline-primary">Add offer</a>
+</div>
 <div class="row g-3 mb-4">
     {% for offer in my_offers %}
     <div class="col-md-4">
@@ -53,11 +75,14 @@
         </div>
     </div>
     {% else %}
-    <p class="text-muted">You haven't posted any offers yet.</p>
+    <div class="empty-state"><i class="bi bi-lightbulb"></i><p class="mb-2 mt-2 fw-semibold">Your knowledge can help someone.</p><p class="text-muted small mb-3">Create your first offer and start teaching.</p><a href="{{ url_for('offers.new_offer') }}" class="btn btn-primary btn-sm">Create an offer</a></div>
     {% endfor %}
 </div>
 
-<h4 class="fw-bold">Your Requests</h4>
+<div class="d-flex justify-content-between align-items-center mb-3 mt-5">
+    <div><div class="page-kicker">Keep exploring</div><h4 class="fw-bold mb-0">Learning requests</h4></div>
+    <a href="{{ url_for('requests.new_request') }}" class="btn btn-sm btn-outline-primary">Request a skill</a>
+</div>
 <div class="row g-3 mb-4">
     {% for req in my_requests %}
     <div class="col-md-4">
@@ -76,11 +101,14 @@
         </div>
     </div>
     {% else %}
-    <p class="text-muted">You haven't posted any requests yet.</p>
+    <div class="empty-state"><i class="bi bi-chat-heart"></i><p class="mb-2 mt-2 fw-semibold">Nothing on your learning wishlist yet.</p><p class="text-muted small mb-0">Ask the community for help with a skill.</p></div>
     {% endfor %}
 </div>
 
-<h4 class="fw-bold">Your Sessions</h4>
+<div class="d-flex justify-content-between align-items-center mb-3 mt-5">
+    <div><div class="page-kicker">Your calendar</div><h4 class="fw-bold mb-0">Upcoming sessions</h4></div>
+    <a href="{{ url_for('sessions.session_history') }}" class="btn btn-sm btn-outline-primary">View history</a>
+</div>
 <div class="row g-3">
     {% for enrollment in my_enrollments %}
     <div class="col-md-4">
@@ -93,7 +121,14 @@
         </div>
     </div>
     {% else %}
-    <p class="text-muted">You haven't RSVP'd to any sessions yet.</p>
+    <div class="empty-state"><i class="bi bi-calendar-heart"></i><p class="mb-2 mt-2 fw-semibold">Your calendar is open.</p><p class="text-muted small mb-0">Explore offers to find your next session.</p></div>
     {% endfor %}
 </div>
+
+{% if certificates %}
+<div class="mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-3"><div><div class="page-kicker">Milestones</div><h4 class="fw-bold mb-0">Recent certificates</h4></div><a href="{{ url_for('certificates.my_certificates') }}" class="small fw-semibold">View all <i class="bi bi-arrow-right"></i></a></div>
+    <div class="row g-3">{% for certificate in certificates %}<div class="col-md-4"><div class="card"><div class="card-body d-flex gap-3 align-items-center"><div class="stat-icon surface-yellow"><i class="bi bi-award"></i></div><div><strong>{{ certificate.session.offer.title }}</strong><div class="small text-muted">{{ certificate.issued_at.strftime('%d %b %Y') }}</div></div></div></div></div>{% endfor %}</div>
+</div>
+{% endif %}
 {% endblock %}

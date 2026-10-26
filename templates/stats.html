@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Your progress — SkillSync{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div><div class="page-kicker">Your progress</div><h2 class="fw-bold mb-1">Learning at a glance</h2><p class="text-muted mb-0">A view of completed sessions recorded in SkillSync.</p></div>
+    <a class="btn btn-outline-primary" href="{{ url_for('main.dashboard') }}"><i class="bi bi-arrow-left me-1"></i>Back to dashboard</a>
+</div>
+<div class="row g-3 mb-5">
+    <div class="col-6 col-md-3"><div class="card stat-card progress-stat-card surface-peach"><div class="stat-icon" style="background:#fff5ef;"><i class="bi bi-easel2"></i></div><div class="stat-card-content"><div class="stat-number">{{ taught_sessions|length }}</div><div class="stat-label">Sessions taught</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card stat-card progress-stat-card surface-mint"><div class="stat-icon" style="background:#f3fbf0;"><i class="bi bi-person-check"></i></div><div class="stat-card-content"><div class="stat-number">{{ attended_sessions|length }}</div><div class="stat-label">Sessions attended</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card stat-card progress-stat-card surface-yellow"><div class="stat-icon" style="background:#fff9e8;"><i class="bi bi-clock-history"></i></div><div class="stat-card-content"><div class="stat-number">{{ learning_hours }}</div><div class="stat-label">Completed hours</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card stat-card progress-stat-card surface-teal"><div class="stat-icon" style="background:#f1fbf9;"><i class="bi bi-award"></i></div><div class="stat-card-content"><div class="stat-number">{{ certificate_count }}</div><div class="stat-label">Certificates earned</div></div></div></div>
+</div>
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="d-flex justify-content-between align-items-center mb-3"><h4 class="fw-bold mb-0">Completed sessions</h4><span class="badge bg-secondary">{{ completed_sessions|length }} total</span></div>
+        <div class="list-group">
+        {% for session in completed_sessions|sort(attribute='end_time', reverse=true) %}
+            <div class="list-group-item d-flex justify-content-between align-items-center gap-3 progress-session-item">
+                <div><strong>{{ session.offer.title }}</strong><div class="small text-muted">{{ session.offer.skill.name }} · {{ session.end_time.strftime('%d %b %Y') }}</div></div>
+                <span class="badge bg-success">Completed</span>
+            </div>
+        {% else %}
+            <div class="empty-state"><i class="bi bi-bar-chart"></i><p class="fw-semibold mt-2 mb-1">Your progress will appear here</p><p class="small text-muted mb-0">Complete a session with attendance and an approved recording.</p></div>
+        {% endfor %}
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card h-100"><div class="card-body"><div class="page-kicker mb-2">How it is measured</div><h4 class="fw-bold">Real progress, no guesses</h4><p class="text-muted small">Completed sessions include ended, non-cancelled sessions with approved recordings and confirmed learners whose attendance has been recorded.</p><hr><p class="small mb-0"><i class="bi bi-shield-check text-success me-2"></i>Statistics are private to your account.</p></div></div>
+    </div>
+</div>
+{% endblock %}

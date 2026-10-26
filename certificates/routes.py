@@ -4,6 +4,7 @@ from pathlib import Path
 import secrets
 
 import qrcode
+from PIL import Image
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, send_file, url_for
 from flask_login import current_user, login_required
 from reportlab.lib import colors
@@ -26,93 +27,215 @@ def _pdf_for(certificate):
     page_w, page_h = landscape(A4)
     pdf = canvas.Canvas(buffer, pagesize=(page_w, page_h))
 
-    navy = colors.HexColor("#142B55")
-    blue = colors.HexColor("#245DB5")
-    muted = colors.HexColor("#53627A")
-    pale_blue = colors.HexColor("#EAF2FF")
-    paper = colors.HexColor("#F8FBFF")
+    teal = colors.HexColor("#063F3A")
+    teal_dark = colors.HexColor("#032F2C")
+    teal_soft = colors.HexColor("#E6F0EC")
+    gold = colors.HexColor("#C8942E")
+    muted = colors.HexColor("#28555A")
+    paper = colors.HexColor("#FCFBF5")
+    ink = colors.HexColor("#073D39")
 
-    pdf.setFillColor(paper)
+    # Deep outer frame and restrained diagonal corner accents match the reference.
+    pdf.setFillColor(teal_dark)
     pdf.rect(0, 0, page_w, page_h, fill=1, stroke=0)
-    pdf.setFillColor(navy)
-    pdf.rect(0, page_h - 9, page_w, 9, fill=1, stroke=0)
-    pdf.rect(0, 0, page_w, 9, fill=1, stroke=0)
-    pdf.setStrokeColor(blue); pdf.setLineWidth(1.8)
-    pdf.rect(18, 18, page_w - 36, page_h - 36, fill=0, stroke=1)
-    pdf.setStrokeColor(colors.HexColor("#A9C4ED")); pdf.setLineWidth(0.7)
-    pdf.rect(26, 26, page_w - 52, page_h - 52, fill=0, stroke=1)
+    pdf.setFillColor(paper)
+    pdf.rect(14, 14, page_w - 28, page_h - 28, fill=1, stroke=0)
+    pdf.setStrokeColor(gold)
+    pdf.setLineWidth(1.3)
+    pdf.rect(22, 22, page_w - 44, page_h - 44, fill=0, stroke=1)
+    pdf.setStrokeColor(colors.HexColor("#E4D7B3"))
+    pdf.setLineWidth(0.6)
+    pdf.rect(28, 28, page_w - 56, page_h - 56, fill=0, stroke=1)
+    pdf.setStrokeColor(gold)
+    pdf.setLineWidth(2)
+    pdf.line(0, page_h - 48, 73, page_h)
+    pdf.line(page_w - 73, 0, page_w, 48)
+    pdf.line(0, 48, 30, 78)
+    pdf.line(page_w - 30, page_h - 78, page_w, page_h - 48)
 
-    # Small corner accents make the border feel intentional without crowding the content.
-    pdf.setFillColor(blue)
-    for x, y in ((26, page_h - 31), (page_w - 38, page_h - 31), (26, 26), (page_w - 38, 26)):
-        pdf.circle(x, y, 2.5, fill=1, stroke=0)
+    # A very faint botanical watermark adds depth without competing with the content.
+    try:
+        pdf.setFillAlpha(0.055)
+        pdf.setStrokeAlpha(0.055)
+    except AttributeError:
+        pass
+    pdf.setFillColor(teal)
+    pdf.setStrokeColor(teal)
+    stem = pdf.beginPath()
+    stem.moveTo(page_w - 178, 92)
+    stem.curveTo(page_w - 145, 172, page_w - 133, 264, page_w - 66, 405)
+    pdf.drawPath(stem, stroke=1, fill=0)
+    for leaf_x, leaf_y, leaf_w, leaf_h in (
+        (page_w - 180, 160, 72, 30),
+        (page_w - 188, 220, 82, 34),
+        (page_w - 145, 280, 72, 30),
+        (page_w - 105, 342, 62, 27),
+    ):
+        leaf = pdf.beginPath()
+        leaf.moveTo(leaf_x, leaf_y)
+        leaf.curveTo(
+            leaf_x + leaf_w * 0.25, leaf_y + leaf_h,
+            leaf_x + leaf_w * 0.78, leaf_y + leaf_h,
+            leaf_x + leaf_w, leaf_y + leaf_h * 0.35,
+        )
+        leaf.curveTo(
+            leaf_x + leaf_w * 0.64, leaf_y - leaf_h * 0.05,
+            leaf_x + leaf_w * 0.25, leaf_y - leaf_h * 0.02,
+            leaf_x, leaf_y,
+        )
+        pdf.drawPath(leaf, stroke=0, fill=1)
+    try:
+        pdf.setFillAlpha(1)
+        pdf.setStrokeAlpha(1)
+    except AttributeError:
+        pass
 
-    pdf.setFillColor(navy)
-    pdf.setFont("Helvetica-Bold", 28)
-    pdf.drawCentredString(page_w / 2, page_h - 72, "SkillSync")
-    pdf.setFillColor(muted); pdf.setFont("Helvetica", 9.5)
-    pdf.drawCentredString(page_w / 2, page_h - 91, "STUDENT-TO-STUDENT LEARNING PLATFORM")
-    pdf.setStrokeColor(colors.HexColor("#B9CDED")); pdf.setLineWidth(0.8)
-    pdf.line(page_w / 2 - 75, page_h - 104, page_w / 2 + 75, page_h - 104)
+    # Remove the supplied PNG's white matte while preserving its original artwork.
+    logo_path = Path(current_app.root_path) / "static" / "school-logo.png"
+    if logo_path.is_file():
+        logo_image = Image.open(logo_path).convert("RGBA")
+        pixels = logo_image.load()
+        for y in range(logo_image.height):
+            for x in range(logo_image.width):
+                r, g, b, alpha = pixels[x, y]
+                if r > 242 and g > 242 and b > 242:
+                    pixels[x, y] = (r, g, b, 0)
+        logo_buffer = BytesIO()
+        logo_image.save(logo_buffer, format="PNG")
+        logo_buffer.seek(0)
+        logo = ImageReader(logo_buffer)
+        logo_w, logo_h = logo.getSize()
+        max_logo_w, max_logo_h = 92, 102
+        scale = min(max_logo_w / logo_w, max_logo_h / logo_h)
+        draw_w, draw_h = logo_w * scale, logo_h * scale
+        pdf.drawImage(
+            logo,
+            45,
+            page_h - 42 - draw_h,
+            width=draw_w,
+            height=draw_h,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
 
-    pdf.setFillColor(navy); pdf.setFont("Helvetica-Bold", 22)
-    pdf.drawCentredString(page_w / 2, page_h - 141, "CERTIFICATE OF CONTRIBUTION")
-    pdf.setStrokeColor(blue); pdf.setLineWidth(1.4)
-    pdf.line(page_w / 2 - 116, page_h - 155, page_w / 2 - 36, page_h - 155)
-    pdf.line(page_w / 2 + 36, page_h - 155, page_w / 2 + 116, page_h - 155)
+    pdf.setFillColor(teal)
+    pdf.setFont("Helvetica-Bold", 22)
+    pdf.drawRightString(page_w - 48, page_h - 55, "SkillSync")
+    pdf.setFillColor(muted)
+    pdf.setFont("Helvetica", 8)
+    pdf.drawRightString(page_w - 48, page_h - 70, "PEER-TO-PEER LEARNING")
 
-    pdf.setFillColor(muted); pdf.setFont("Helvetica", 11)
-    pdf.drawCentredString(page_w / 2, page_h - 186, "This certificate is proudly presented to")
-    pdf.setFillColor(navy); pdf.setFont("Helvetica-Bold", 25)
-    name = teacher.name[:90]
-    pdf.drawCentredString(page_w / 2, page_h - 222, name)
-    pdf.setStrokeColor(blue); pdf.setLineWidth(1)
-    pdf.line(page_w / 2 - 105, page_h - 232, page_w / 2 + 105, page_h - 232)
-
-    pdf.setFillColor(muted); pdf.setFont("Helvetica", 11)
-    pdf.drawCentredString(page_w / 2, page_h - 259, "for successfully conducting a peer-learning session on")
-    pdf.setFillColor(blue); pdf.setFont("Helvetica-Bold", 16)
-    topic = f"{offer.skill.name}  |  {offer.title}"
-    if len(topic) > 75:
-        topic = topic[:72] + "..."
-    pdf.drawCentredString(page_w / 2, page_h - 288, topic)
-
-    # A light information band keeps the metadata grouped and easy to scan.
-    pdf.setFillColor(pale_blue)
-    pdf.roundRect(48, 116, page_w - 96, 54, 8, fill=1, stroke=0)
-    pdf.setStrokeColor(colors.HexColor("#C1D4F2")); pdf.setLineWidth(0.7)
-    pdf.roundRect(48, 116, page_w - 96, 54, 8, fill=0, stroke=1)
-
-    date_text = session.start_time.strftime("%d %B %Y")
-    pdf.setFillColor(navy); pdf.setFont("Helvetica-Bold", 10)
-    pdf.drawString(66, 145, date_text)
-    pdf.setFillColor(muted); pdf.setFont("Helvetica", 7)
-    pdf.drawString(66, 130, "SESSION DATE")
-    pdf.setStrokeColor(colors.HexColor("#8EAFE1")); pdf.line(218, 127, 218, 159)
-    pdf.setFillColor(navy); pdf.setFont("Helvetica-Bold", 10)
-    pdf.drawString(243, 145, certificate.certificate_code)
-    pdf.setFillColor(muted); pdf.setFont("Helvetica", 7)
-    pdf.drawString(243, 130, "CERTIFICATE ID")
-
-    # Keep the signature and administrator attribution in their own column.
-    signature_left = page_w - 287
-    signature_right = page_w - 138
-    pdf.setStrokeColor(colors.HexColor("#6B91D3")); pdf.setLineWidth(0.8)
-    pdf.line(signature_left, 132, signature_right, 132)
-    pdf.setFillColor(navy); pdf.setFont("Helvetica-Oblique", 16)
-    pdf.drawCentredString((signature_left + signature_right) / 2, 139, "Alex Morgan")
-    pdf.setFillColor(muted); pdf.setFont("Helvetica", 7)
-    pdf.drawCentredString((signature_left + signature_right) / 2, 121, "SKILLSYNC PLATFORM ADMIN")
-
+    # QR verification remains generated from the certificate's real verification URL.
     verify_url = url_for("certificates.verify_certificate", code=certificate.certificate_code, _external=True)
     qr_img = qrcode.make(verify_url)
-    qr_buffer = BytesIO(); qr_img.save(qr_buffer, format="PNG"); qr_buffer.seek(0)
-    qr_x = page_w - 104
-    pdf.drawImage(ImageReader(qr_buffer), qr_x, 47, width=58, height=58, preserveAspectRatio=True, mask="auto")
-    pdf.setFillColor(muted); pdf.setFont("Helvetica", 6.5)
-    pdf.drawCentredString(qr_x + 29, 37, "SCAN TO VERIFY")
-    pdf.setFillColor(blue); pdf.setFont("Helvetica-Bold", 9)
-    pdf.drawCentredString(page_w / 2, 38, "SkillSync  •  Learn. Share. Grow.")
+    qr_buffer = BytesIO()
+    qr_img.save(qr_buffer, format="PNG")
+    qr_buffer.seek(0)
+    qr_size = 62
+    qr_x = page_w - 52 - qr_size
+    qr_y = page_h - 163
+    pdf.setFillColor(colors.white)
+    pdf.setStrokeColor(gold)
+    pdf.setLineWidth(1.1)
+    pdf.roundRect(qr_x - 7, qr_y - 7, qr_size + 14, qr_size + 14, 6, fill=1, stroke=1)
+    pdf.drawImage(ImageReader(qr_buffer), qr_x, qr_y, width=qr_size, height=qr_size, mask="auto")
+    pdf.setFillColor(teal)
+    pdf.setFont("Helvetica-Bold", 6.2)
+    pdf.drawCentredString(qr_x + qr_size / 2, qr_y - 17, "SCAN TO VERIFY")
+    pdf.setFont("Helvetica", 6.2)
+    pdf.drawCentredString(qr_x + qr_size / 2, qr_y - 27, certificate.certificate_code)
+
+    center_x = page_w / 2
+    # The community label stands alone so decorative lines cannot cross its letters.
+    pdf.setFillColor(gold)
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawCentredString(center_x, page_h - 94, "S K I L L S Y N C   C O M M U N I T Y")
+    pdf.setFillColor(teal)
+    pdf.setFont("Times-Bold", 34)
+    pdf.drawCentredString(center_x, page_h - 145, "Certificate of Contribution")
+    pdf.setStrokeColor(gold)
+    pdf.setLineWidth(1)
+    pdf.line(center_x - 82, page_h - 172, center_x - 25, page_h - 172)
+    pdf.line(center_x + 25, page_h - 172, center_x + 82, page_h - 172)
+    pdf.setFillColor(gold)
+    pdf.setFont("Helvetica-Bold", 13)
+    pdf.drawCentredString(center_x, page_h - 176, "◆")
+    pdf.setFillColor(muted)
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawCentredString(center_x, page_h - 207, "P R E S E N T E D   T O")
+    pdf.setFillColor(ink)
+    pdf.setFont("Times-Bold", 39)
+    pdf.drawCentredString(center_x, page_h - 255, teacher.name[:55])
+    pdf.setFillColor(muted)
+    pdf.setFont("Helvetica", 12)
+    pdf.drawCentredString(center_x, page_h - 285, "for sharing knowledge through a peer-learning session")
+
+    topic = f"{offer.skill.name}  ·  {offer.title}"
+    if len(topic) > 75:
+        topic = topic[:72] + "..."
+    pdf.setFillColor(teal)
+    pdf.setFont("Times-Bold", 20)
+    pdf.drawCentredString(center_x, page_h - 330, topic)
+
+    # The metadata strip uses circular pictograms like the reference.
+    band_x, band_y, band_w, band_h = 39, 78, page_w - 78, 82
+    pdf.setFillColor(teal_soft)
+    pdf.roundRect(band_x, band_y, band_w, band_h, 10, fill=1, stroke=0)
+    pdf.setStrokeColor(gold)
+    pdf.setLineWidth(0.8)
+    pdf.roundRect(band_x, band_y, band_w, band_h, 10, fill=0, stroke=1)
+
+    date_text = session.start_time.strftime("%d %B %Y")
+    duration_hours = None
+    if session.start_time and session.end_time and session.end_time > session.start_time:
+        duration_hours = (session.end_time - session.start_time).total_seconds() / 3600
+    duration_text = f"{duration_hours:g} hours" if duration_hours is not None else "Not recorded"
+    metadata = [
+        ("SESSION DATE", date_text),
+        ("SESSION DURATION", duration_text),
+        ("CERTIFICATE ID", certificate.certificate_code),
+    ]
+    column_w = band_w / len(metadata)
+    for index, (label, value) in enumerate(metadata):
+        x = band_x + column_w * index + 70
+        if index:
+            pdf.setStrokeColor(colors.HexColor("#B7C7BC"))
+            pdf.line(band_x + column_w * index, band_y + 15, band_x + column_w * index, band_y + band_h - 15)
+        icon_x, icon_y = band_x + column_w * index + 42, band_y + band_h / 2
+        pdf.setFillColor(teal)
+        pdf.circle(icon_x, icon_y, 15, fill=1, stroke=0)
+        pdf.setStrokeColor(colors.white)
+        pdf.setLineWidth(1.2)
+        if index == 0:
+            pdf.rect(icon_x - 7, icon_y - 6, 14, 12, fill=0, stroke=1)
+            pdf.line(icon_x - 4, icon_y + 9, icon_x - 4, icon_y + 5)
+            pdf.line(icon_x + 4, icon_y + 9, icon_x + 4, icon_y + 5)
+        elif index == 1:
+            pdf.circle(icon_x, icon_y, 7, fill=0, stroke=1)
+            pdf.line(icon_x, icon_y, icon_x, icon_y + 4)
+            pdf.line(icon_x, icon_y, icon_x + 3, icon_y - 2)
+        else:
+            pdf.circle(icon_x, icon_y, 7, fill=0, stroke=1)
+            pdf.line(icon_x - 4, icon_y - 3, icon_x, icon_y - 7)
+            pdf.line(icon_x, icon_y - 7, icon_x + 5, icon_y + 2)
+        pdf.setFillColor(muted)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawString(x, band_y + 49, label)
+        pdf.setFillColor(teal)
+        pdf.setFont("Times-Bold", 12)
+        pdf.drawString(x, band_y + 28, value[:28])
+
+    pdf.setFillColor(muted)
+    pdf.setStrokeColor(gold)
+    pdf.setLineWidth(0.8)
+    pdf.line(center_x - 80, 57, center_x - 20, 57)
+    pdf.line(center_x + 20, 57, center_x + 80, 57)
+    pdf.setFillColor(gold)
+    pdf.setFont("Helvetica-Bold", 9)
+    pdf.drawCentredString(center_x, 54, "◆")
+    pdf.setFillColor(muted)
+    pdf.setFont("Helvetica", 7.5)
+    pdf.drawCentredString(center_x, 38, "This certificate recognizes a documented contribution to the SkillSync learning community.")
     pdf.save(); buffer.seek(0)
     return buffer
 
@@ -134,7 +257,18 @@ def download_certificate(certificate_id):
         abort(404)
     pdf = _pdf_for(certificate)
     safe_code = "".join(ch for ch in certificate.certificate_code if ch.isalnum() or ch in "-")
-    return send_file(pdf, mimetype="application/pdf", as_attachment=True, download_name=f"SkillSync-{safe_code}.pdf")
+    response = send_file(
+        pdf,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"SkillSync-Modern-Certificate-{safe_code}.pdf",
+        max_age=0,
+        conditional=False,
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Certificate-Design"] = "teal-cream-v2"
+    return response
 
 
 @certificates_bp.route("/verify/<code>")

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request
 from flask_login import login_required, current_user
 from sqlalchemy.orm import selectinload
-from models import Offer, Request, Enrollment, Skill, User, Session, db
+from models import Certificate, Offer, Request, Enrollment, Skill, User, Session, db
 
 main_bp = Blueprint("main", __name__)
 
@@ -51,6 +51,33 @@ def request_relevance_score(req, query):
     return score
 
 
+def _progress_sessions(user):
+    taught_sessions = user._taught_sessions_query().order_by(Session.end_time.desc()).all()
+    attended_sessions = (
+        Session.query
+        .join(Enrollment)
+        .filter(
+            Enrollment.student_id == user.id,
+            Enrollment.status == "confirmed",
+            Enrollment.attended.is_(True),
+            Session.status != "cancelled",
+            Session.recording_approval_status == "approved",
+            Session.deleted_at.is_(None),
+            Session.end_time < datetime.now(),
+        )
+        .distinct()
+        .order_by(Session.end_time.desc())
+        .all()
+    )
+    completed_sessions = {session.id: session for session in taught_sessions + attended_sessions}
+    valid_durations = [
+        (session.end_time - session.start_time).total_seconds() / 3600
+        for session in completed_sessions.values()
+        if session.start_time and session.end_time and session.end_time > session.start_time
+    ]
+    return taught_sessions, attended_sessions, completed_sessions, round(sum(valid_durations), 1)
+
+
 @main_bp.route("/dashboard")
 @login_required
 def dashboard():
@@ -82,6 +109,22 @@ def dashboard():
         and not e.session.is_cancelled
         and datetime.now() < e.session.start_time <= soon_cutoff
     ]
+    certificates = (
+        Certificate.query
+        .filter_by(recipient_id=current_user.id)
+        .order_by(Certificate.issued_at.desc())
+        .limit(3)
+        .all()
+    )
+    taught_sessions, attended_sessions, completed_sessions, _ = _progress_sessions(current_user)
+    stats = {
+        "skills_taught": len(current_user.skills_taught),
+        "skills_learned": len(current_user.skills_learned),
+        "sessions_taught": len(taught_sessions),
+        "sessions_attended": len(attended_sessions),
+        "sessions_completed": len(completed_sessions),
+        "certificates": Certificate.query.filter_by(recipient_id=current_user.id).count(),
+    }
 
     return render_template(
         "dashboard.html",
@@ -91,6 +134,22 @@ def dashboard():
         sessions_needing_recording=sessions_needing_recording,
         upcoming_teaching=upcoming_teaching,
         upcoming_learning=upcoming_learning,
+        stats=stats,
+        certificates=certificates,
+    )
+
+
+@main_bp.route("/stats")
+@login_required
+def stats():
+    taught_sessions, attended_sessions, completed_sessions, learning_hours = _progress_sessions(current_user)
+    return render_template(
+        "stats.html",
+        taught_sessions=taught_sessions,
+        attended_sessions=attended_sessions,
+        completed_sessions=completed_sessions.values(),
+        learning_hours=round(learning_hours, 1),
+        certificate_count=Certificate.query.filter_by(recipient_id=current_user.id).count(),
     )
 
 

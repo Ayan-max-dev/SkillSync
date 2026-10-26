@@ -2,8 +2,16 @@
     {% block title %}Explore — SkillShare{% endblock %}
 
     {% block content %}
-    <h2 class="fw-bold mb-4">Explore Skills</h2>
-    <form method="GET" action="{{ url_for('main.explore') }}" class="mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+        <div><div class="page-kicker">Discover</div><h2 class="fw-bold mb-1">Find your next skill</h2><p class="text-muted mb-0">Learn from peers or find someone who needs what you know.</p></div>
+        {% if current_user.is_authenticated %}
+        <div class="explore-actions">
+            <a id="create-offer-action" href="{{ url_for('offers.new_offer') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Create Offer</a>
+            <a id="create-request-action" href="{{ url_for('requests.new_request') }}" class="btn btn-primary d-none"><i class="bi bi-chat-heart me-1"></i>Create Request</a>
+        </div>
+        {% endif %}
+    </div>
+    <form method="GET" action="{{ url_for('main.explore') }}" class="card p-3 mb-4">
         <div class="row g-2 align-items-end">
             <div class="col-md-4">
                 <label class="form-label small text-muted">Search</label>
@@ -35,16 +43,16 @@
                 </select>
             </div>
             <div class="col-md-1">
-                <button type="submit" class="btn btn-primary w-100">Go</button>
+                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search me-1"></i>Search</button>
             </div>
         </div>
     </form>
-    <ul class="nav nav-tabs mb-3">
+    <ul class="nav nav-pills mb-4 gap-2">
         <li class="nav-item">
-            <a class="nav-link active" data-bs-toggle="tab" href="#offers-tab">Offers ({{ offers|length }})</a>
+            <a class="nav-link active" data-bs-toggle="tab" href="#offers-tab"><i class="bi bi-stars me-1"></i>Offers ({{ offers|length }})</a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#requests-tab">Requests ({{ requests|length }})</a>
+            <a class="nav-link" data-bs-toggle="tab" href="#requests-tab"><i class="bi bi-chat-heart me-1"></i>Requests ({{ requests|length }})</a>
         </li>
     </ul>
 
@@ -63,7 +71,7 @@
                                     🟢 Live
                                 {% endif %}
                             </span>
-                            <h5 class="card-title"><a href="{{ url_for('offers.offer_detail', offer_id=offer.id) }}">{{ offer.title }}</a></h5>
+                            <h5 class="card-title mb-2"><a class="text-decoration-none" href="{{ url_for('offers.offer_detail', offer_id=offer.id) }}">{{ offer.title }}</a></h5>
                             <p class="text-muted small mb-1">{{ offer.skill.name }} · {{ offer.level }}</p>
                             <p class="card-text">{{ offer.description or "No description provided." }}</p>
                             <p class="text-muted small mb-0">Taught by {{ offer.teacher.name }} · {{ offer.confirmed_count }}/{{ offer.max_attendees }} enrolled</p>
@@ -74,7 +82,7 @@
                     </div>
                 </div>
                 {% else %}
-                <p class="text-muted">No offers yet — be the first to teach something!</p>
+                <div class="empty-state"><i class="bi bi-stars"></i><p class="fw-semibold mt-2 mb-1">No offers match those filters</p><p class="small text-muted mb-0">Try a different search or be the first to teach this skill.</p></div>
                 {% endfor %}
             </div>
         </div>
@@ -118,9 +126,28 @@
                     </div>
                 </div>
                 {% else %}
-                <p class="text-muted">No requests yet.</p>
+                <div class="empty-state"><i class="bi bi-chat-heart"></i><p class="fw-semibold mt-2 mb-1">No requests match those filters</p><p class="small text-muted mb-0">Check back soon for new learning opportunities.</p></div>
                 {% endfor %}
             </div>
         </div>
     </div>
+    {% endblock %}
+    {% block scripts %}
+    <script>
+        const offersTab = document.querySelector('a[href="#offers-tab"]');
+        const requestsTab = document.querySelector('a[href="#requests-tab"]');
+        const createOfferAction = document.getElementById('create-offer-action');
+        const createRequestAction = document.getElementById('create-request-action');
+
+        function updateExploreAction(tabId) {
+            const requestsActive = tabId === '#requests-tab';
+            createOfferAction.classList.toggle('d-none', requestsActive);
+            createRequestAction.classList.toggle('d-none', !requestsActive);
+        }
+
+        if (offersTab && requestsTab && createOfferAction && createRequestAction) {
+            offersTab.addEventListener('shown.bs.tab', () => updateExploreAction('#offers-tab'));
+            requestsTab.addEventListener('shown.bs.tab', () => updateExploreAction('#requests-tab'));
+        }
+    </script>
     {% endblock %}
