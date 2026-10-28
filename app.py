@@ -9,6 +9,7 @@ from models import db, User, Skill, Offer, Request, Session, Enrollment, Request
 from config import Config
 from flask_migrate import Migrate
 from flask import jsonify
+from flask_limiter.util import get_remote_address
 from sqlalchemy.exc import IntegrityError
 from auth.routes import auth_bp
 from profiles.routes import profiles_bp
@@ -49,6 +50,14 @@ def create_app(test_config=None):
     app.register_blueprint(certificates_bp)
 
     login_manager.login_view = "auth.login"
+
+    @app.route("/_ip")
+    def app_ip():
+        return {
+            "remote_addr": request.remote_addr,
+            "x_forwarded_for": request.headers.get("X-Forwarded-For"),
+            "limiter_sees": get_remote_address(),
+        }
 
     @app.context_processor
     def inject_unread_notifications():

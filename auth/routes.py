@@ -1,7 +1,8 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
-from extensions import limiter
+from extensions import limiter, login_key
+from flask_limiter.util import get_remote_address
 from models import User, db
 
 
@@ -50,7 +51,8 @@ def add_user():
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("10 per 15 minutes", key_func=login_key, methods=["POST"])
+@limiter.limit("600 per 5 minutes", key_func=get_remote_address, methods=["POST"])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("main.dashboard"))
