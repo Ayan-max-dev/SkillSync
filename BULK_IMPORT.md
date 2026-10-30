@@ -13,6 +13,13 @@ The importer:
 - Validates all rows before writing.
 - Uses `User.set_password()` and never prints passwords or hashes.
 - Supports a dry run and rolls back on unexpected database errors.
+- Prints count-only progress every 50 newly created accounts during a real import;
+  dry-run output remains a summary and never writes to the database.
+
+Password hashing remains the import's dominant cost. The importer keeps the
+application's Werkzeug password-hashing settings and does not weaken or parallelize
+hashing. Database lookup overhead is reduced to one email-column query, followed by
+case normalization in memory.
 
 ## Local commands
 

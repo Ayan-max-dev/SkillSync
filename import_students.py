@@ -7,7 +7,7 @@ import getpass
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 from zipfile import ZipFile
 from xml.etree import ElementTree
 
@@ -168,9 +168,13 @@ def import_students(
     password: str,
     *,
     dry_run: bool = False,
+    progress_callback: Callable[[int, int], None] | None = None,
+    progress_every: int = 50,
 ) -> ImportSummary:
     if not password or not 8 <= len(password) <= 128:
         raise ValueError("The import password must be between 8 and 128 characters.")
+    if progress_every < 1:
+        raise ValueError("progress_every must be at least 1.")
 
     all_students: list[StudentRow] = []
     summary = ImportSummary()
@@ -196,10 +200,8 @@ def import_students(
                     all_students.append(student)
 
         existing_emails = {
-            email
-            for (email,) in db.session.query(db.func.lower(User.email))
-            .filter(db.func.lower(User.email).in_(seen_across_workbooks))
-            .all()
+            email.lower()
+            for (email,) in db.session.query(User.email).all()
         }
         new_students = [
             student for student in all_students if student.email not in existing_emails
@@ -211,7 +213,8 @@ def import_students(
             return summary
 
         try:
-            for student in new_students:
+            total_new = len(new_students)
+            for index, student in enumerate(new_students, start=1):
                 user = User(
                     name=student.name,
                     email=student.email,
@@ -220,9 +223,14 @@ def import_students(
                 )
                 user.set_password(password)
                 db.session.add(user)
+                if (
+                    progress_callback
+                    and (index % progress_every == 0 or index == total_new)
+                ):
+                    progress_callback(index, total_new)
             db.session.commit()
             summary.created = len(new_students)
-        except Exception:
+        except BaseException:
             db.session.rollback()
             raise
 
@@ -253,7 +261,16 @@ def main() -> int:
 
     from app import app
 
-    summary = import_students(app, args.workbooks, password, dry_run=args.dry_run)
+    def report_progress(completed: int, total: int) -> None:
+        print(f"processed {completed}/{total} new accounts")
+
+    summary = import_students(
+        app,
+        args.workbooks,
+        password,
+        dry_run=args.dry_run,
+        progress_callback=None if args.dry_run else report_progress,
+    )
     print(
         f"created={summary.created} skipped_existing={summary.skipped_existing} "
         f"duplicates={summary.duplicates} invalid={summary.invalid}"

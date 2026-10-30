@@ -108,6 +108,30 @@ def test_import_skips_existing_and_duplicate_emails_without_changes(tmp_path, te
     assert User.query.filter_by(email="new_oow@gemsed.com").one().check_password("password12345")
 
 
+def test_import_reports_count_only_progress(tmp_path, temporary_app):
+    workbook = tmp_path / "grade9.xlsx"
+    _write_workbook(
+        workbook,
+        ["FeeID", "StudentNo", "StudentName", "Class", "Section", "Username"],
+        [
+            [str(index), str(index), f"Student {index}", "9", "A", f"student{index}_oow"]
+            for index in range(1, 6)
+        ],
+    )
+    progress = []
+
+    summary = import_students(
+        temporary_app,
+        [workbook],
+        "password12345",
+        progress_callback=lambda completed, total: progress.append((completed, total)),
+        progress_every=2,
+    )
+
+    assert summary.created == 5
+    assert progress == [(2, 5), (4, 5), (5, 5)]
+
+
 def test_import_rolls_back_on_unexpected_error(tmp_path, temporary_app, monkeypatch):
     workbook = tmp_path / "grade9.xlsx"
     _write_workbook(
@@ -122,4 +146,30 @@ def test_import_rolls_back_on_unexpected_error(tmp_path, temporary_app, monkeypa
         import_students(temporary_app, [workbook], "password12345")
 
     db.session.commit = original_commit
+    assert User.query.count() == 0
+
+
+def test_import_rolls_back_when_interrupted(tmp_path, temporary_app):
+    workbook = tmp_path / "grade9.xlsx"
+    _write_workbook(
+        workbook,
+        ["FeeID", "StudentNo", "StudentName", "Class", "Section", "Username"],
+        [
+            [str(index), str(index), f"Student {index}", "9", "A", f"student{index}_oow"]
+            for index in range(1, 4)
+        ],
+    )
+
+    def interrupt_after_first_account(completed, total):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        import_students(
+            temporary_app,
+            [workbook],
+            "password12345",
+            progress_callback=interrupt_after_first_account,
+            progress_every=1,
+        )
+
     assert User.query.count() == 0
