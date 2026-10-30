@@ -53,5 +53,17 @@
         and issues the certificate in one step.
     </p>
 </form>
+<form method="POST"
+      action="{{ url_for('admin.reject_completion', session_id=session.id) }}"
+      class="mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <textarea name="review_note" class="form-control mb-2" rows="2" maxlength="1000"
+              placeholder="Explain why the recording or session completion needs changes"></textarea>
+    <button class="btn btn-outline-danger"
+        {% if not session.recording_url or session.recording_approval_status not in ['submitted', 'approved'] %}disabled{% endif %}
+        onclick="return confirm('Reject this session completion and request changes?');">
+        Reject Session Completion
+    </button>
+</form>
 {% endif %}
 {% endblock %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Post an Offer — SkillShare{% endblock %}
+{% block title %}Post an Offer — SkillSync{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -8,6 +8,7 @@
             <div class="card-body p-4">
                 <h3 class="card-title mb-1 fw-bold">{{ "Edit offer" if editing else "Offer to teach a skill" }}</h3>
                 <p class="text-muted mb-4">{{ "Update your offer and resubmit it for admin review." if editing else "Your offer will be reviewed by an administrator before it appears on Explore." }}</p>
+                <div class="alert alert-info small">Describe what you will teach, the learner level, key topics, and what learners should be able to do. Include a realistic outline. Only share material you have permission to distribute; uploaded files must be under 5 MB.</div>
 
                 {% with messages = get_flashed_messages() %}
                     {% if messages %}
@@ -43,8 +44,9 @@
                     <div class="mb-3">
                         <label class="form-label">Category</label>
                         <select name="category" class="form-select" required>
-                            <option value="Academic" {% if fulfilling_request and fulfilling_request.skill.category == "Academic" %}selected{% endif %}>Academic</option>
-                            <option value="Non-academic" {% if fulfilling_request and fulfilling_request.skill.category == "Non-academic" %}selected{% endif %}>Non-academic</option>
+                            {% for category in ["Technology & Computing", "Mathematics", "Science", "Languages", "Music", "Art & Design", "Communication & Public Speaking", "Writing & Literature", "Sports & Fitness", "Business & Entrepreneurship", "Academic Skills & Study Techniques", "Life Skills", "Other", "Academic", "Non-academic"] %}
+                            <option value="{{ category }}" {% if (editing and offer.category == category) or (not editing and fulfilling_request and fulfilling_request.skill.category == category) %}selected{% endif %}>{{ category }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">
@@ -53,7 +55,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Description</label>
-                        <textarea name="description" class="form-control" rows="4" placeholder="What will you cover?" required>{{ offer.description if editing and offer else '' }}</textarea>
+                        <textarea name="description" class="form-control" rows="4" placeholder="What will you cover, and what will learners be able to do afterward?" required>{{ offer.description if editing and offer else '' }}</textarea>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Level</label>

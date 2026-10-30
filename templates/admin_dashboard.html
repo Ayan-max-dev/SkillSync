@@ -9,15 +9,15 @@
     </div>
 </div>
 <div class="row g-3 mb-5">
-    <div class="col-6 col-lg-3"><div class="card stat-card surface-yellow"><div class="stat-icon" style="background:#fff9e8;"><i class="bi bi-inbox"></i></div><div><div class="stat-number">{{ pending_offers|length }}</div><div class="small text-muted">Offers to review</div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card stat-card surface-peach"><div class="stat-icon" style="background:#fff5ef;"><i class="bi bi-camera-video"></i></div><div><div class="stat-number">{{ pending_recordings|length }}</div><div class="small text-muted">Recordings to review</div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card stat-card surface-teal"><div class="stat-icon" style="background:#f1fbf9;"><i class="bi bi-calendar-check"></i></div><div><div class="stat-number">{{ sessions|length }}</div><div class="small text-muted">Open session records</div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card stat-card surface-mint"><div class="stat-icon" style="background:#f3fbf0;"><i class="bi bi-flag"></i></div><div><div class="stat-number">{{ reports|length }}</div><div class="small text-muted">Reports in view</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card stat-card surface-yellow"><div class="stat-icon" style="background:#fff9e8;"><i class="bi bi-inbox"></i></div><div><div class="stat-number">{{ pending_offers.total }}</div><div class="small text-muted">Offers to review</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card stat-card surface-peach"><div class="stat-icon" style="background:#fff5ef;"><i class="bi bi-camera-video"></i></div><div><div class="stat-number">{{ pending_recordings.total }}</div><div class="small text-muted">Recordings to review</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card stat-card surface-teal"><div class="stat-icon" style="background:#f1fbf9;"><i class="bi bi-calendar-check"></i></div><div><div class="stat-number">{{ sessions.total }}</div><div class="small text-muted">Open session records</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card stat-card surface-mint"><div class="stat-icon" style="background:#f3fbf0;"><i class="bi bi-flag"></i></div><div><div class="stat-number">{{ reports.total }}</div><div class="small text-muted">Reports in view</div></div></div></div>
 </div>
 
 <h4 class="fw-bold">Offers Awaiting Review</h4>
 <div class="row g-3 mb-5">
-{% for offer in pending_offers %}
+{% for offer in pending_offers.items %}
     <div class="col-md-6">
         <div class="card h-100 shadow-sm">
             <div class="card-body">
@@ -25,7 +25,7 @@
                     <h5 class="fw-bold mb-1">{{ offer.title }}</h5>
                     <span class="badge bg-{{ 'warning text-dark' if offer.approval_status == 'pending' else 'danger' }}">{{ offer.approval_status }}</span>
                 </div>
-                <div class="text-muted small mb-2">{{ offer.skill.name }} · {{ offer.level }} · {{ offer.format }} · by {{ offer.teacher.name }}</div>
+                <div class="text-muted small mb-2">{{ offer.category or offer.skill.category }} · {{ offer.skill.name }} · {{ offer.level }} · {{ offer.format }} · by {{ offer.teacher.name }}</div>
                 <p class="mb-2">{{ offer.description }}</p>
                 {% if offer.material_file or offer.material_url %}
                     <div class="mb-3">
@@ -47,16 +47,17 @@
     </div>
 {% else %}<p class="text-muted">No offers are waiting for review.</p>{% endfor %}
 </div>
+{% if offers_page.pages > 1 %}<div class="small mb-4">Offer queue page {{ offers_page.page }} of {{ offers_page.pages }} <a href="{{ url_for('admin.dashboard', offers_page=offers_page.prev_num if offers_page.has_prev else 1, status=status_filter) }}">Previous</a> <a href="{{ url_for('admin.dashboard', offers_page=offers_page.next_num if offers_page.has_next else offers_page.pages, status=status_filter) }}">Next</a></div>{% endif %}
 
 <h4 class="fw-bold">Recordings Awaiting Review</h4>
 <div class="row g-3 mb-5">
-{% for session in pending_recordings %}
+{% for session in pending_recordings.items %}
     <div class="col-md-6">
         <div class="card h-100 shadow-sm">
             <div class="card-body">
                 <h5 class="fw-bold mb-1">{{ session.offer.title }}</h5>
                 <div class="text-muted small mb-2">{{ session.start_time.strftime('%b %d, %Y — %I:%M %p') }} · {{ session.offer.teacher.name }}</div>
-                <a href="{{ session.recording_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary mb-3">Open Recording</a>
+                <a href="{{ url_for('sessions.view_recording', session_id=session.id) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary mb-3">Open Recording</a>
                 {% if session.recording_review_note %}<div class="alert alert-danger py-2 small">Previous review: {{ session.recording_review_note }}</div>{% endif %}
                 <form method="POST" action="{{ url_for('admin.review_recording', session_id=session.id) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -69,32 +70,34 @@
     </div>
 {% else %}<p class="text-muted">No recordings are waiting for review.</p>{% endfor %}
 </div>
+{% if recordings_page.pages > 1 %}<div class="small mb-4">Recording queue page {{ recordings_page.page }} of {{ recordings_page.pages }} <a href="{{ url_for('admin.dashboard', recordings_page=recordings_page.prev_num if recordings_page.has_prev else 1, status=status_filter) }}">Previous</a> <a href="{{ url_for('admin.dashboard', recordings_page=recordings_page.next_num if recordings_page.has_next else recordings_page.pages, status=status_filter) }}">Next</a></div>{% endif %}
 
 <h4 class="fw-bold">Reports</h4>
 <div class="mb-3">
 {% for value in ['open','resolved','dismissed','restored','all'] %}<a class="btn btn-sm {{ 'btn-primary' if status_filter == value else 'btn-outline-primary' }}" href="{{ url_for('admin.dashboard', status=value) }}">{{ value|capitalize }}</a>{% endfor %}
 </div>
 <div class="list-group mb-5">
-{% for report in reports %}
+{% for report in reports.items %}
 <a href="{{ url_for('admin.report_detail', report_id=report.id) }}" class="list-group-item list-group-item-action">
 <strong>{{ report.target_label }}</strong><div class="small text-muted">Reported by {{ report.reporter.name }} · {{ report.created_at.strftime('%b %d, %Y — %I:%M %p') }}</div><div class="small mt-1">{{ report.reason }}</div>
 </a>
 {% else %}<p class="text-muted">No reports in this view.</p>{% endfor %}
 </div>
+{% if reports_page.pages > 1 %}<div class="small mb-4">Reports page {{ reports_page.page }} of {{ reports_page.pages }} <a href="{{ url_for('admin.dashboard', reports_page=reports_page.prev_num if reports_page.has_prev else 1, status=status_filter) }}">Previous</a> <a href="{{ url_for('admin.dashboard', reports_page=reports_page.next_num if reports_page.has_next else reports_page.pages, status=status_filter) }}">Next</a></div>{% endif %}
 
 <h4 class="fw-bold">Users</h4>
 <div class="list-group mb-5">
-{% for user in users %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ user.name }}</strong><div class="small text-muted">{{ user.email }}{% if user.grade %} · {{ user.grade }}{% endif %}</div></div>{% if user.is_admin %}<span class="badge bg-primary">Admin</span>{% else %}<form method="POST" action="{{ url_for('admin.promote_user', user_id=user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-primary">Promote to Admin</button></form>{% endif %}</div>{% endfor %}
+{% for user in users.items %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ user.name }}</strong><div class="small text-muted">{{ user.email }}{% if user.grade %} · {{ user.grade }}{% endif %}</div></div>{% if user.is_admin %}<span class="badge bg-primary">Admin</span>{% else %}<form method="POST" action="{{ url_for('admin.promote_user', user_id=user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-primary">Promote to Admin</button></form>{% endif %}</div>{% endfor %}
 </div>
 
 <h4 class="fw-bold">Session Management</h4>
 <p class="text-muted small">Sessions with an issued certificate are no longer listed here.</p>
 <div class="list-group mb-5">
-{% for session in sessions %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ session.offer.title }}</strong><div class="small text-muted">{{ session.start_time.strftime('%b %d, %Y — %I:%M %p') }} · {{ session.offer.teacher.name }}{% if session.deleted_at %} · removed{% endif %}</div></div>{% if session.deleted_at %}<span class="badge bg-secondary">Removed</span>{% else %}<a class="btn btn-sm btn-outline-primary me-2" href="{{ url_for('admin.review_session_detail', session_id=session.id) }}">Review / Certificate</a><form method="POST" action="{{ url_for('admin.delete_session', session_id=session.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this session? Its history will be preserved.');">Remove Session</button></form>{% endif %}</div>{% else %}<p class="text-muted">No sessions.</p>{% endfor %}
+{% for session in sessions.items %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ session.offer.title }}</strong><div class="small text-muted">{{ session.start_time.strftime('%b %d, %Y — %I:%M %p') }} · {{ session.offer.teacher.name }}{% if session.deleted_at %} · removed{% endif %}</div></div>{% if session.deleted_at %}<span class="badge bg-secondary">Removed</span>{% else %}<a class="btn btn-sm btn-outline-primary me-2" href="{{ url_for('admin.review_session_detail', session_id=session.id) }}">Review / Certificate</a><form method="POST" action="{{ url_for('admin.delete_session', session_id=session.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this session? Its history will be preserved.');">Remove Session</button></form>{% endif %}</div>{% else %}<p class="text-muted">No sessions.</p>{% endfor %}
 </div>
 
 <h4 class="fw-bold">Learning Requests</h4>
 <div class="list-group">
-{% for req in requests %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ req.skill.name }}</strong><div class="small text-muted">{{ req.student.name }} · {{ req.status }}{% if req.deleted_at %} · removed{% endif %}</div></div>{% if req.deleted_at %}<span class="badge bg-secondary">Removed</span>{% else %}<form method="POST" action="{{ url_for('admin.delete_request', request_id=req.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this request? Its record will be preserved.');">Remove Request</button></form>{% endif %}</div>{% else %}<p class="text-muted">No requests.</p>{% endfor %}
+{% for req in requests.items %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ req.skill.name }}</strong><div class="small text-muted">{{ req.student.name }} · {{ req.status }}{% if req.deleted_at %} · removed{% endif %}</div></div>{% if req.deleted_at %}<span class="badge bg-secondary">Removed</span>{% else %}<form method="POST" action="{{ url_for('admin.delete_request', request_id=req.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this request? Its record will be preserved.');">Remove Request</button></form>{% endif %}</div>{% else %}<p class="text-muted">No requests.</p>{% endfor %}
 </div>
 {% endblock %}

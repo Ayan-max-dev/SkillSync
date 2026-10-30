@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Schedule a Session — SkillShare{% endblock %}
+{% block title %}Schedule a Session — SkillSync{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -17,12 +17,16 @@
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
+                        <label class="form-label">Session date</label>
+                        <input type="date" name="session_date" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Start time</label>
-                        <input type="datetime-local" name="start_time" class="form-control" required>
+                        <input type="time" name="start_time" class="form-control" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">End time</label>
-                        <input type="datetime-local" name="end_time" class="form-control" required>
+                        <input type="time" name="end_time" class="form-control" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Meeting link</label>

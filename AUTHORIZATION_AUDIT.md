@@ -1,4 +1,4 @@
-# SkillShare Authorization Audit
+# SkillSync Authorization Audit
 
 Legend:
 

@@ -14,6 +14,14 @@ def bounded_text(value, max_length):
     return value if len(value) <= max_length else None
 
 
+def normalized_email(value):
+    return (value or "").strip().lower()
+
+
+def normalized_name(value):
+    return " ".join((value or "").strip().split()).title()
+
+
 @auth_bp.route("/")
 def home():
     if current_user.is_authenticated:
@@ -28,8 +36,8 @@ def add_user():
         return redirect(url_for("main.dashboard"))
 
     if request.method == "POST":
-        name = bounded_text(request.form.get("name"), 100)
-        email = bounded_text(request.form.get("email"), 120)
+        name = normalized_name(bounded_text(request.form.get("name"), 100))
+        email = normalized_email(bounded_text(request.form.get("email"), 120))
         password = request.form.get("password", "")
 
         if not name or not email or "@" not in email or not 8 <= len(password) <= 128:
@@ -58,12 +66,12 @@ def login():
         return redirect(url_for("main.dashboard"))
 
     if request.method == "POST":
-        email = bounded_text(request.form.get("email"), 120)
+        email = normalized_email(bounded_text(request.form.get("email"), 120))
         password = request.form.get("password", "")
         if not email or not password or len(password) > 128:
             flash("Enter your email and password.", "warning")
             return redirect(url_for("auth.login"))
-        user = User.query.filter_by(email=email).first()
+        user = User.query.filter(db.func.lower(User.email) == email).first()
 
         if user and user.check_password(password):
             login_user(user)

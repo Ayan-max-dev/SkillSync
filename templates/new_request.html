@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Post a Request — SkillShare{% endblock %}
+{% block title %}Post a Request — SkillSync{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -25,8 +25,9 @@
                     <div class="mb-3">
                         <label class="form-label">Category</label>
                         <select name="category" class="form-select" required>
-                            <option value="Academic">Academic</option>
-                            <option value="Non-academic">Non-academic</option>
+                            {% for category in ["Technology & Computing", "Mathematics", "Science", "Languages", "Music", "Art & Design", "Communication & Public Speaking", "Writing & Literature", "Sports & Fitness", "Business & Entrepreneurship", "Academic Skills & Study Techniques", "Life Skills", "Other", "Academic", "Non-academic"] %}
+                            <option value="{{ category }}">{{ category }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">

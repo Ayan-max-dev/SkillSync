@@ -7,7 +7,23 @@ from models import Request, RequestUpvote, Skill, db
 
 requests_bp = Blueprint("requests", __name__)
 
-ALLOWED_CATEGORIES = {"Academic", "Non-academic"}
+ALLOWED_CATEGORIES = {
+    "Technology & Computing",
+    "Mathematics",
+    "Science",
+    "Languages",
+    "Music",
+    "Art & Design",
+    "Communication & Public Speaking",
+    "Writing & Literature",
+    "Sports & Fitness",
+    "Business & Entrepreneurship",
+    "Academic Skills & Study Techniques",
+    "Life Skills",
+    "Other",
+    "Academic",
+    "Non-academic",
+}
 
 
 def bounded_text(value, max_length):

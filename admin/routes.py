@@ -62,28 +62,32 @@ def dashboard():
     if status_filter != "all":
         reports_query = reports_query.filter_by(status=status_filter)
 
-    reports = reports_query.all()
-    users = User.query.order_by(User.name.asc()).all()
+    reports_page = reports_query.paginate(page=request.args.get("reports_page", 1, type=int), per_page=20, error_out=False)
+    users_page = User.query.order_by(User.name.asc()).paginate(page=request.args.get("users_page", 1, type=int), per_page=20, error_out=False)
     offers = Offer.query.options(selectinload(Offer.teacher)).order_by(Offer.id.desc()).all()
-    requests = LearningRequest.query.options(selectinload(LearningRequest.student)).order_by(LearningRequest.id.desc()).all()
-    pending_offers = Offer.query.filter(Offer.approval_status == "pending").order_by(Offer.id.desc()).all()
-    pending_recordings = Session.query.join(Offer).filter(
+    requests_page = LearningRequest.query.options(selectinload(LearningRequest.student)).order_by(LearningRequest.id.desc()).paginate(page=request.args.get("requests_page", 1, type=int), per_page=20, error_out=False)
+    pending_offers_page = Offer.query.filter(Offer.approval_status == "pending").order_by(Offer.id.desc()).paginate(page=request.args.get("offers_page", 1, type=int), per_page=12, error_out=False)
+    pending_recordings_page = Session.query.join(Offer).filter(
         Session.recording_approval_status.in_(["submitted", "rejected"]),
+        Session.recording_url.isnot(None),
         Session.deleted_at.is_(None),
-    ).order_by(Session.end_time.desc()).all()
-    sessions = (
+    ).order_by(Session.end_time.desc()).paginate(page=request.args.get("recordings_page", 1, type=int), per_page=12, error_out=False)
+    sessions_page = (
         Session.query
         .join(Offer)
         .filter(~Session.certificate.has())
         .order_by(Session.start_time.desc())
-        .all()
+        .paginate(page=request.args.get("sessions_page", 1, type=int), per_page=20, error_out=False)
     )
 
     return render_template(
         "admin_dashboard.html",
-        reports=reports, users=users, offers=offers, requests=requests,
-        pending_offers=pending_offers, pending_recordings=pending_recordings,
-        sessions=sessions, status_filter=status_filter,
+        reports=reports_page, users=users_page, offers=offers, requests=requests_page,
+        pending_offers=pending_offers_page, pending_recordings=pending_recordings_page,
+        sessions=sessions_page, status_filter=status_filter,
+        reports_page=reports_page, users_page=users_page, requests_page=requests_page,
+        offers_page=pending_offers_page, recordings_page=pending_recordings_page,
+        sessions_page=sessions_page,
     )
 
 
@@ -156,6 +160,32 @@ def review_recording(session_id):
     return redirect(
         url_for("admin.review_session_detail", session_id=session_id)
     )
+
+
+@admin_bp.route("/sessions/<int:session_id>/reject-completion", methods=["POST"])
+def reject_completion(session_id):
+    target_session = Session.query.get_or_404(session_id)
+    note = (request.form.get("review_note") or "").strip()
+    if len(note) > 1000:
+        flash("Review note must be 1,000 characters or fewer.")
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+    if not target_session.recording_url:
+        flash("There is no recording to review.")
+        return redirect(url_for("admin.review_session_detail", session_id=session_id))
+
+    target_session.recording_approval_status = "rejected"
+    target_session.recording_review_note = (
+        note or "The session completion needs changes before it can be approved."
+    )
+    _notify_user(
+        target_session.offer.teacher_id,
+        "moderation",
+        f"The completion for '{target_session.offer.title}' needs changes before it can be approved.",
+        url_for("sessions.add_recording", session_id=target_session.id),
+    )
+    db.session.commit()
+    flash("Session completion rejected and returned to the teacher for changes.")
+    return redirect(url_for("admin.review_session_detail", session_id=session_id))
 
 
 @admin_bp.route("/sessions/<int:session_id>/delete", methods=["POST"])

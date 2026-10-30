@@ -1,5 +1,5 @@
     {% extends "base.html" %}
-    {% block title %}Explore — SkillShare{% endblock %}
+    {% block title %}Explore — SkillSync{% endblock %}
 
     {% block content %}
     <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
@@ -21,8 +21,9 @@
                 <label class="form-label small text-muted">Category</label>
                 <select name="category" class="form-select">
                     <option value="" {{ 'selected' if not selected_category }}>All</option>
-                    <option value="Academic" {{ 'selected' if selected_category == 'Academic' }}>Academic</option>
-                    <option value="Non-academic" {{ 'selected' if selected_category == 'Non-academic' }}>Non-academic</option>
+                    {% for category in ["Technology & Computing", "Mathematics", "Science", "Languages", "Music", "Art & Design", "Communication & Public Speaking", "Writing & Literature", "Sports & Fitness", "Business & Entrepreneurship", "Academic Skills & Study Techniques", "Life Skills", "Other", "Academic", "Non-academic"] %}
+                    <option value="{{ category }}" {{ 'selected' if selected_category == category }}>{{ category }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="col-md-2">
@@ -85,6 +86,9 @@
                 <div class="empty-state"><i class="bi bi-stars"></i><p class="fw-semibold mt-2 mb-1">No offers match those filters</p><p class="small text-muted mb-0">Try a different search or be the first to teach this skill.</p></div>
                 {% endfor %}
             </div>
+            {% if offers_page.pages > 1 %}
+            <nav class="mt-3" aria-label="Offer pages"><a class="btn btn-sm btn-outline-primary {{ 'disabled' if not offers_page.has_prev }}" href="{{ url_for('main.explore', offers_page=offers_page.prev_num if offers_page.has_prev else 1, requests_page=requests_page.page, q=search_query, category=selected_category, format=selected_format, level=selected_level) }}">Previous</a> <span class="small mx-2">Page {{ offers_page.page }} of {{ offers_page.pages }}</span><a class="btn btn-sm btn-outline-primary {{ 'disabled' if not offers_page.has_next }}" href="{{ url_for('main.explore', offers_page=offers_page.next_num if offers_page.has_next else offers_page.pages, requests_page=requests_page.page, q=search_query, category=selected_category, format=selected_format, level=selected_level) }}">Next</a></nav>
+            {% endif %}
         </div>
 
         <div class="tab-pane fade" id="requests-tab">
@@ -129,6 +133,9 @@
                 <div class="empty-state"><i class="bi bi-chat-heart"></i><p class="fw-semibold mt-2 mb-1">No requests match those filters</p><p class="small text-muted mb-0">Check back soon for new learning opportunities.</p></div>
                 {% endfor %}
             </div>
+            {% if requests_page.pages > 1 %}
+            <nav class="mt-3" aria-label="Request pages"><a class="btn btn-sm btn-outline-primary {{ 'disabled' if not requests_page.has_prev }}" href="{{ url_for('main.explore', requests_page=requests_page.prev_num if requests_page.has_prev else 1, offers_page=offers_page.page, q=search_query, category=selected_category, format=selected_format, level=selected_level) }}">Previous</a> <span class="small mx-2">Page {{ requests_page.page }} of {{ requests_page.pages }}</span><a class="btn btn-sm btn-outline-primary {{ 'disabled' if not requests_page.has_next }}" href="{{ url_for('main.explore', requests_page=requests_page.next_num if requests_page.has_next else requests_page.pages, offers_page=offers_page.page, q=search_query, category=selected_category, format=selected_format, level=selected_level) }}">Next</a></nav>
+            {% endif %}
         </div>
     </div>
     {% endblock %}

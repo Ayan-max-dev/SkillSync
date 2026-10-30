@@ -206,9 +206,19 @@ with app.app_context():
         format="live"
     )
 
+    sam_offer = Offer(
+        teacher_id=sam.id,
+        skill_id=study_skills.id,
+        title="Effective Study Planning",
+        description="Learn how to break a large revision plan into manageable study sessions.",
+        level="Beginner",
+        max_attendees=6,
+        format="live"
+    )
+
     db.session.add_all([
         offer1, offer2, offer3, offer4,
-        offer5, offer6, offer7, offer8
+        offer5, offer6, offer7, offer8, sam_offer
     ])
     db.session.flush()
 
@@ -540,6 +550,42 @@ with app.app_context():
             comment="The exercises were much better than just watching a tutorial."
         )
     )
+
+    # ============================================================
+    # PAST SESSION - SAM'S RECORDING AWAITING REVIEW
+    # ============================================================
+
+    sam_review_session = Session(
+        offer_id=sam_offer.id,
+        start_time=now - timedelta(days=3, hours=2),
+        end_time=now - timedelta(days=3, hours=1),
+        meeting_link="https://zoom.us/j/sam-study-planning",
+        recording_url="https://youtube.com/watch?v=sam-study-planning",
+        recording_approval_status="submitted"
+    )
+
+    db.session.add(sam_review_session)
+    db.session.flush()
+
+    # Attendance is intentionally left unset so an admin can see the
+    # pending attendance state during the review workflow.
+    db.session.add_all([
+        Enrollment(
+            session_id=sam_review_session.id,
+            student_id=john.id,
+            status="confirmed"
+        ),
+        Enrollment(
+            session_id=sam_review_session.id,
+            student_id=priya.id,
+            status="confirmed"
+        ),
+        Enrollment(
+            session_id=sam_review_session.id,
+            student_id=alex.id,
+            status="confirmed"
+        ),
+    ])
 
     # ============================================================
     # CANCELLED SESSION

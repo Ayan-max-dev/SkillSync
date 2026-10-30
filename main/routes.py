@@ -6,7 +6,23 @@ from models import Certificate, Offer, Request, Enrollment, Skill, User, Session
 
 main_bp = Blueprint("main", __name__)
 
-ALLOWED_CATEGORIES = {"Academic", "Non-academic"}
+ALLOWED_CATEGORIES = {
+    "Technology & Computing",
+    "Mathematics",
+    "Science",
+    "Languages",
+    "Music",
+    "Art & Design",
+    "Communication & Public Speaking",
+    "Writing & Literature",
+    "Sports & Fitness",
+    "Business & Entrepreneurship",
+    "Academic Skills & Study Techniques",
+    "Life Skills",
+    "Other",
+    "Academic",
+    "Non-academic",
+}
 ALLOWED_FORMATS = {"live", "recorded"}
 ALLOWED_LEVELS = {"Beginner", "Intermediate", "Advanced"}
 
@@ -188,8 +204,8 @@ def explore():
         )
     )
 
-    if category in ("Academic", "Non-academic"):
-        offers_query = offers_query.filter(Skill.category == category)
+    if category in ALLOWED_CATEGORIES:
+        offers_query = offers_query.filter(db.or_(Offer.category == category, Offer.category.is_(None), Skill.category == category))
         requests_query = requests_query.filter(Skill.category == category)
 
     if format_filter in ("live", "recorded"):
@@ -214,21 +230,17 @@ def explore():
             )
         )
 
-    offers = offers_query.all()
-    if search_query:
-        offers.sort(key=lambda o: offer_relevance_score(o, search_query), reverse=True)
-    else:
-        offers.sort(key=lambda o: o.confirmed_count, reverse=True)
-    requests_list = requests_query.all()
-    if search_query:
-        requests_list.sort(key=lambda r: request_relevance_score(r, search_query), reverse=True)
-    else:
-        requests_list.sort(key=lambda r: len(r.upvotes), reverse=True)
+    offers_query = offers_query.order_by(Offer.id.desc())
+    requests_query = requests_query.order_by(Request.id.desc())
+    offers_page = offers_query.paginate(page=request.args.get("offers_page", 1, type=int), per_page=12, error_out=False)
+    requests_page = requests_query.paginate(page=request.args.get("requests_page", 1, type=int), per_page=12, error_out=False)
 
     return render_template(
         "explore.html",
-        offers=offers,
-        requests=requests_list,
+        offers=offers_page.items,
+        requests=requests_page.items,
+        offers_page=offers_page,
+        requests_page=requests_page,
         selected_category=category,
         selected_format=format_filter,
         selected_level=level_filter,

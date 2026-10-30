@@ -1,3 +1,4 @@
+import io
 import pytest
 import sys
 import os
@@ -16,7 +17,8 @@ from models import (
     RequestUpvote,
     Feedback,
     Lesson,
-    Comment
+    Comment,
+    Notification,
 )
 
 
@@ -89,6 +91,106 @@ def test_login(client):
     )
 
     assert response.status_code == 200
+
+
+def test_join_session_requires_confirmed_enrollment_and_open_window(client):
+    teacher = _create_user("Teacher", "teacher-join@example.com")
+    student = _create_user("Student", "student-join@example.com")
+    offer, _ = _create_offer(teacher, title="Join Test")
+    offer.approval_status = "pending"
+    session = Session(
+        offer_id=offer.id,
+        start_time=datetime.now() + timedelta(minutes=10),
+        end_time=datetime.now() + timedelta(hours=1),
+        meeting_link="https://example.com/meeting",
+    )
+    db.session.add(session)
+    db.session.commit()
+
+    _login(client, student.email)
+    response = client.get(f"/sessions/{session.id}/join")
+    assert response.status_code == 403
+
+    enrollment = Enrollment(session_id=session.id, student_id=student.id, status="confirmed")
+    db.session.add(enrollment)
+    db.session.commit()
+    response = client.get(f"/sessions/{session.id}/join")
+    assert response.status_code == 302
+    assert response.headers["Location"] == f"/offers/{offer.id}"
+
+
+def test_material_upload_rejects_invalid_type_and_exact_five_mebibytes(client, tmp_path):
+    teacher = _create_user("Material Teacher", "material-teacher@example.com")
+    _login(client, teacher.email)
+    client.application.config["MATERIAL_UPLOAD_FOLDER"] = str(tmp_path)
+
+    fields = {
+        "skill_name": "PDF Skills",
+        "category": "Technology & Computing",
+        "title": "PDF Skills",
+        "description": "A useful description",
+        "level": "Beginner",
+        "format": "live",
+        "max_attendees": "10",
+    }
+    invalid = client.post(
+        "/offers/new",
+        data={**fields, "material_file": (io.BytesIO(b"not a pdf"), "notes.exe")},
+        content_type="multipart/form-data",
+    )
+    assert invalid.status_code == 302
+    assert list(tmp_path.iterdir()) == []
+
+    just_under_limit = b"%PDF-" + b"x" * (5 * 1024 * 1024 - 6)
+    accepted = client.post(
+        "/offers/new",
+        data={**fields, "material_file": (io.BytesIO(just_under_limit), "valid.pdf")},
+        content_type="multipart/form-data",
+    )
+    assert accepted.status_code == 302
+    assert len(list(tmp_path.iterdir())) == 1
+
+    exact_limit = b"%PDF-" + b"x" * (5 * 1024 * 1024 - 5)
+    rejected = client.post(
+        "/offers/new",
+        data={**fields, "material_file": (io.BytesIO(exact_limit), "notes.pdf")},
+        content_type="multipart/form-data",
+    )
+    assert rejected.status_code == 302
+    assert len(list(tmp_path.iterdir())) == 1
+
+
+def test_material_and_recording_visibility_are_authorized(client, tmp_path):
+    teacher = _create_user("Visibility Teacher", "visibility-teacher@example.com")
+    student = _create_user("Visibility Student", "visibility-student@example.com")
+    stranger = _create_user("Visibility Stranger", "visibility-stranger@example.com")
+    offer, _ = _create_offer(teacher, title="Visibility Test")
+    offer.approval_status = "pending"
+    offer.material_file = "existing.pdf"
+    session = Session(
+        offer_id=offer.id,
+        start_time=datetime.now() - timedelta(hours=2),
+        end_time=datetime.now() - timedelta(hours=1),
+        recording_url="https://example.com/recording",
+        recording_approval_status="approved",
+    )
+    db.session.add(session)
+    db.session.commit()
+    tmp_path.joinpath("existing.pdf").write_bytes(b"%PDF-1.7")
+    client.application.config["MATERIAL_UPLOAD_FOLDER"] = str(tmp_path)
+
+    _login(client, stranger.email)
+    assert client.get(f"/offers/{offer.id}/material").status_code == 404
+    assert client.get(f"/sessions/{session.id}/recording/view").status_code == 403
+
+    offer.approval_status = "approved"
+    db.session.commit()
+    db.session.add(Enrollment(session_id=session.id, student_id=stranger.id, status="confirmed"))
+    db.session.commit()
+    assert client.get(f"/offers/{offer.id}/material").status_code == 200
+    recording_response = client.get(f"/sessions/{session.id}/recording/view")
+    assert recording_response.status_code == 302
+    assert recording_response.headers["Location"] == session.recording_url
 
 
 def test_dashboard_requires_login(client):
@@ -297,10 +399,8 @@ def test_request_owner_can_delete_request_and_upvotes_but_not_skill(client):
     response = client.post(f"/requests/{request_id}/delete")
 
     assert response.status_code == 302
-    saved_request = db.session.get(Request, request_id)
-    assert saved_request is not None
-    assert saved_request.deleted_at is not None
-    assert db.session.get(RequestUpvote, upvote_id) is not None
+    assert db.session.get(Request, request_id) is None
+    assert db.session.get(RequestUpvote, upvote_id) is None
     assert db.session.get(Skill, skill_id) is not None
 
 
@@ -496,6 +596,55 @@ def test_new_offer_starts_pending_and_is_not_in_explore(client):
     assert b"Python Basics" not in explore.data
 
 
+def test_new_offer_notifies_admin_for_review(client):
+    teacher = _create_user("Teacher", "offer-notify-teacher@example.com")
+    admin = _create_user("Admin", "offer-notify-admin@example.com")
+    admin.is_admin = True
+    teacher.grade = "10"
+    teacher.courses_completed = "Math"
+    db.session.commit()
+    _login(client, teacher.email)
+
+    response = client.post("/offers/new", data={
+        "skill_name": "Algebra", "category": "Mathematics", "title": "Algebra Basics",
+        "description": "I will teach algebra basics", "level": "Beginner",
+        "format": "live", "max_attendees": "10"
+    })
+
+    assert response.status_code == 302
+    notification = Notification.query.filter_by(
+        user_id=admin.id,
+        category="moderation",
+    ).one()
+    assert "Algebra Basics" in notification.message
+    assert notification.link == "/admin/dashboard?offers_page=1"
+
+
+def test_login_email_is_case_insensitive(client):
+    user = _create_user("Case User", "case-user@example.com")
+    user.set_password("TestPassword123")
+    db.session.commit()
+
+    response = client.post("/login", data={
+        "email": "CASE-USER@EXAMPLE.COM",
+        "password": "TestPassword123",
+    })
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/dashboard")
+
+
+def test_registration_normalizes_name(client):
+    response = client.post("/add-user", data={
+        "name": "  aAHIL   aMANI ",
+        "email": "normalized@example.com",
+        "password": "TestPassword123",
+    })
+
+    assert response.status_code == 302
+    assert db.session.query(User).filter_by(email="normalized@example.com").one().name == "Aahil Amani"
+
+
 def test_admin_can_approve_offer(client):
     teacher = _create_user("Teacher", "teacher3@example.com")
     admin = _create_user("Admin", "admin3@example.com")
@@ -508,6 +657,57 @@ def test_admin_can_approve_offer(client):
     response = client.post(f"/admin/offers/{offer.id}/review", data={"action":"approve"})
     assert response.status_code == 302
     assert db.session.get(Offer, offer.id).approval_status == "approved"
+
+
+def test_admin_review_page_does_not_remove_recording_from_queue(client):
+    admin = _create_user("Admin", "recording-queue-admin@example.com")
+    admin.is_admin = True
+    teacher = _create_user("Recording Teacher", "recording-queue-teacher@example.com")
+    offer, _ = _create_offer(teacher, "Queue Recording")
+    session = Session(
+        offer_id=offer.id,
+        start_time=datetime.now() - timedelta(hours=2),
+        end_time=datetime.now() - timedelta(hours=1),
+        recording_url="https://example.com/recording",
+        recording_approval_status="submitted",
+    )
+    db.session.add(session)
+    db.session.commit()
+    _login(client, admin.email)
+
+    response = client.get(f"/admin/sessions/{session.id}/review")
+
+    assert response.status_code == 200
+    assert db.session.get(Session, session.id).recording_approval_status == "submitted"
+    dashboard = client.get("/admin/dashboard")
+    assert b"Queue Recording" in dashboard.data
+
+
+def test_admin_can_reject_session_completion(client):
+    admin = _create_user("Admin", "completion-admin@example.com")
+    admin.is_admin = True
+    teacher = _create_user("Completion Teacher", "completion-teacher@example.com")
+    offer, _ = _create_offer(teacher, "Completion Review")
+    session = Session(
+        offer_id=offer.id,
+        start_time=datetime.now() - timedelta(hours=2),
+        end_time=datetime.now() - timedelta(hours=1),
+        recording_url="https://example.com/recording",
+        recording_approval_status="submitted",
+    )
+    db.session.add(session)
+    db.session.commit()
+    _login(client, admin.email)
+
+    response = client.post(
+        f"/admin/sessions/{session.id}/reject-completion",
+        data={"review_note": "Please provide a clearer recording."},
+    )
+
+    assert response.status_code == 302
+    saved = db.session.get(Session, session.id)
+    assert saved.recording_approval_status == "rejected"
+    assert saved.recording_review_note == "Please provide a clearer recording."
 
 
 def test_recording_requires_admin_approval_for_completion(client):

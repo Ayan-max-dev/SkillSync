@@ -6,12 +6,28 @@ import os
 import secrets
 import zipfile
 
-from models import Comment, Lesson, Offer, Request, Skill, db
+from models import Comment, Lesson, Notification, Offer, Request, Skill, User, db
 
 
 offers_bp = Blueprint("offers", __name__)
 
-ALLOWED_CATEGORIES = {"Academic", "Non-academic"}
+ALLOWED_CATEGORIES = {
+    "Technology & Computing",
+    "Mathematics",
+    "Science",
+    "Languages",
+    "Music",
+    "Art & Design",
+    "Communication & Public Speaking",
+    "Writing & Literature",
+    "Sports & Fitness",
+    "Business & Entrepreneurship",
+    "Academic Skills & Study Techniques",
+    "Life Skills",
+    "Other",
+    "Academic",
+    "Non-academic",
+}
 ALLOWED_FORMATS = {"live", "recorded"}
 ALLOWED_LEVELS = {"Beginner", "Intermediate", "Advanced"}
 MATERIAL_TYPES = {
@@ -53,12 +69,12 @@ def save_material(uploaded_file):
     if extension not in MATERIAL_TYPES:
         return None, "Only PDF and PPTX files are allowed."
 
-    max_size = current_app.config["MAX_CONTENT_LENGTH"]
+    max_size = current_app.config["MATERIAL_MAX_BYTES"]
     uploaded_file.stream.seek(0, os.SEEK_END)
     file_size = uploaded_file.stream.tell()
     uploaded_file.stream.seek(0)
-    if file_size > max_size:
-        return None, "Each uploaded file must be 5 MB or smaller."
+    if file_size >= max_size:
+        return None, "Each uploaded file must be smaller than 5 MB."
 
     uploaded_file.stream.seek(0)
     header = uploaded_file.stream.read(5)
@@ -83,6 +99,25 @@ def save_material(uploaded_file):
     stored = f"{secrets.token_hex(16)}{extension}"
     uploaded_file.save(os.path.join(folder, stored))
     return (stored, original), None
+
+
+def notify_admins_of_pending_offer(offer):
+    message = f"Offer '{offer.title}' from {offer.teacher.name} is awaiting review."
+    link = url_for("admin.dashboard", offers_page=1)
+    for admin in User.query.filter_by(is_admin=True).all():
+        existing = Notification.query.filter_by(
+            user_id=admin.id,
+            category="moderation",
+            message=message,
+            link=link,
+        ).first()
+        if not existing:
+            db.session.add(Notification(
+                user_id=admin.id,
+                category="moderation",
+                message=message,
+                link=link,
+            ))
 
 
 @offers_bp.route("/offers/<int:offer_id>")
@@ -189,6 +224,7 @@ def _save_offer(existing=None):
             offer.title = title
             offer.description = description
             offer.level = level
+            offer.category = category
             offer.max_attendees = max_attendees if format_choice == "live" else 0
             offer.format = format_choice
             offer.material_url = material_url
@@ -196,6 +232,7 @@ def _save_offer(existing=None):
                 offer.material_file, offer.material_name = saved_material
             offer.approval_status = "pending"
             offer.approval_note = None
+            notify_admins_of_pending_offer(offer)
             db.session.commit()
             flash("Your changes were submitted for admin review.")
             return redirect(url_for("offers.offer_detail", offer_id=offer.id))
@@ -206,6 +243,7 @@ def _save_offer(existing=None):
             title=title,
             description=description,
             level=level,
+            category=category,
             max_attendees=max_attendees if format_choice == "live" else 0,
             format=format_choice,
             approval_status="pending",
@@ -218,6 +256,8 @@ def _save_offer(existing=None):
         if fulfilling_request:
             fulfilling_request.status = "fulfilled"
 
+        db.session.flush()
+        notify_admins_of_pending_offer(offer)
         db.session.commit()
         flash("Your offer was submitted for admin review.")
 
@@ -239,6 +279,9 @@ def offer_material(offer_id):
     material_path = os.path.join(
         current_app.config["MATERIAL_UPLOAD_FOLDER"], offer.material_file
     )
+    material_root = os.path.realpath(current_app.config["MATERIAL_UPLOAD_FOLDER"])
+    if os.path.commonpath((material_root, os.path.realpath(material_path))) != material_root:
+        abort(404)
     if not os.path.isfile(material_path):
         abort(404)
     extension = os.path.splitext(offer.material_file)[1].lower()
@@ -279,6 +322,7 @@ def manage_lessons(offer_id):
         if offer.approval_status == "approved":
             offer.approval_status = "pending"
             offer.approval_note = None
+            notify_admins_of_pending_offer(offer)
         db.session.commit()
         flash("Lesson added. The course has been sent for admin review again.")
         return redirect(url_for("offers.manage_lessons", offer_id=offer.id))

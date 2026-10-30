@@ -161,6 +161,7 @@ class Offer(db.Model):
     title = db.Column(db.String(150), nullable=False)
     description = db.Column(db.Text, nullable=True)
     level = db.Column(db.String(20), nullable=False)
+    category = db.Column(db.String(80), nullable=True)
     max_attendees = db.Column(db.Integer, default=10)
     status = db.Column(db.String(20), default="open")
     format = db.Column(db.String(20), default="live")  # "live" or "recorded"
@@ -228,7 +229,17 @@ class Session(db.Model):
 
     @property
     def has_ended(self):
-        return self.end_time < datetime.now()
+        return self.end_time <= datetime.now()
+
+    @property
+    def join_available(self):
+        return (
+            not self.is_cancelled
+            and self.deleted_at is None
+            and self.meeting_link is not None
+            and datetime.now() >= self.start_time - timedelta(minutes=5)
+            and datetime.now() < self.end_time
+        )
 
     @property
     def is_cancelled(self):

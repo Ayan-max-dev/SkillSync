@@ -17,7 +17,7 @@
 
                 {% if taught_sessions %}
 
-                    {% for session in taught_sessions %}
+                    {% for session in taught_sessions.items %}
 
                         <a href="{{ url_for('offers.offer_detail', offer_id=session.offer.id) }}"
                            class="text-decoration-none text-dark">
@@ -50,6 +50,14 @@
 
                     {% endfor %}
 
+                    {% if taught_sessions.pages > 1 %}
+                    <div class="small">
+                        Page {{ taught_sessions.page }} of {{ taught_sessions.pages }} —
+                        <a href="{{ url_for('sessions.session_history', teaching_page=taught_sessions.prev_num if taught_sessions.has_prev else 1, learning_page=attended_sessions.page) }}">Previous</a>
+                        <a href="{{ url_for('sessions.session_history', teaching_page=taught_sessions.next_num if taught_sessions.has_next else taught_sessions.pages, learning_page=attended_sessions.page) }}">Next</a>
+                    </div>
+                    {% endif %}
+
                 {% else %}
 
                     <p class="text-muted mb-0">
@@ -70,7 +78,7 @@
 
                 {% if attended_sessions %}
 
-                    {% for session in attended_sessions %}
+                    {% for session in attended_sessions.items %}
 
                         {% set my_enrollment = namespace(value=None) %}
 
@@ -133,6 +141,14 @@
                         </a>
 
                     {% endfor %}
+
+                    {% if attended_sessions.pages > 1 %}
+                    <div class="small">
+                        Page {{ attended_sessions.page }} of {{ attended_sessions.pages }} —
+                        <a href="{{ url_for('sessions.session_history', learning_page=attended_sessions.prev_num if attended_sessions.has_prev else 1, teaching_page=taught_sessions.page) }}">Previous</a>
+                        <a href="{{ url_for('sessions.session_history', learning_page=attended_sessions.next_num if attended_sessions.has_next else attended_sessions.pages, teaching_page=taught_sessions.page) }}">Next</a>
+                    </div>
+                    {% endif %}
 
                 {% else %}
 

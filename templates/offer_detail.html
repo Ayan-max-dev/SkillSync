@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ offer.title }} — SkillShare{% endblock %}
+{% block title %}{{ offer.title }} — SkillSync{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
 
-        <span class="badge bg-secondary mb-2">{{ offer.skill.category }}</span>
+        <span class="badge bg-secondary mb-2">{{ offer.category or offer.skill.category }}</span>
         <h2 class="fw-bold">{{ offer.title }}</h2>
         <p class="text-muted">{{ offer.skill.name }} · {{ offer.level }} · Taught by
             <a href="{{ url_for('profiles.view_profile', user_id=offer.teacher.id) }}">{{ offer.teacher.name }}</a>
@@ -102,7 +102,10 @@
 
                     {% if session.has_ended %}
                         {% if session.recording_status == "uploaded" and current_user.is_authenticated %}
-                            <a href="{{ session.recording_url }}" target="_blank" class="btn btn-sm btn-outline-success mt-2">▶ Watch Recording</a>
+                            {% set can_view_recording = current_user.is_authenticated and (current_user.is_admin or current_user.id == offer.teacher_id or (my_enrollment and my_enrollment[0].status == 'confirmed')) %}
+                            {% if can_view_recording %}
+                            <a href="{{ url_for('sessions.view_recording', session_id=session.id) }}" target="_blank" class="btn btn-sm btn-outline-success mt-2">▶ Watch Recording</a>
+                            {% endif %}
                             {% if current_user.id != offer.teacher_id and not current_user.is_admin %}
                                 <a href="{{ url_for('reports.new_report', target_type='recording', target_id=session.id) }}" class="btn btn-sm btn-outline-danger mt-2">Report Recording</a>
                             {% endif %}
@@ -135,8 +138,10 @@
                         <span class="badge bg-{{ 'success' if my_enrollment[0].status == 'confirmed' else 'warning' }}">
                             You: {{ my_enrollment[0].status }}
                         </span>
-                        {% if my_enrollment[0].status == 'confirmed' and session.meeting_link %}
-                            <a href="{{ session.meeting_link }}" class="btn btn-sm btn-success mt-2" target="_blank">Join Link</a>
+                        {% if my_enrollment[0].status == 'confirmed' and session.join_available %}
+                            <a href="{{ url_for('sessions.join_session', session_id=session.id) }}" class="btn btn-sm btn-success mt-2" target="_blank">Join Session</a>
+                        {% elif my_enrollment[0].status == 'confirmed' and not session.has_ended %}
+                            <span class="badge bg-info text-dark mt-2">Join link opens five minutes before the start</span>
                         {% endif %}
                     {% elif current_user.is_authenticated and current_user.id != offer.teacher_id %}
                         <form method="POST" action="{{ url_for('sessions.rsvp_session', session_id=session.id) }}">

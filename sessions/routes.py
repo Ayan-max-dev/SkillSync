@@ -1,7 +1,7 @@
 from datetime import datetime
 from urllib.parse import urlparse
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 
@@ -58,17 +58,18 @@ def schedule_session(offer_id):
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
     if request.method == "POST":
-        start_str = bounded_text(request.form.get("start_time"), 16)
-        end_str = bounded_text(request.form.get("end_time"), 16)
+        date_str = bounded_text(request.form.get("session_date"), 10)
+        start_str = bounded_text(request.form.get("start_time"), 5)
+        end_str = bounded_text(request.form.get("end_time"), 5)
         meeting_link = bounded_text(request.form.get("meeting_link"), 300)
 
-        if not start_str or not end_str or meeting_link is None or (meeting_link and not valid_url(meeting_link)):
-            flash("Enter valid start, end, and meeting link values.")
+        if not date_str or not start_str or not end_str or meeting_link is None or (meeting_link and not valid_url(meeting_link)):
+            flash("Enter a valid session date, start time, end time, and meeting link.")
             return redirect(url_for("sessions.schedule_session", offer_id=offer.id))
 
         try:
-            start_time = datetime.strptime(start_str, "%Y-%m-%dT%H:%M")
-            end_time = datetime.strptime(end_str, "%Y-%m-%dT%H:%M")
+            start_time = datetime.strptime(f"{date_str} {start_str}", "%Y-%m-%d %H:%M")
+            end_time = datetime.strptime(f"{date_str} {end_str}", "%Y-%m-%d %H:%M")
         except ValueError:
             flash("Enter valid start and end times.")
             return redirect(url_for("sessions.schedule_session", offer_id=offer.id))
@@ -109,9 +110,11 @@ def rsvp_session(session_id):
         flash("This session is no longer available.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
 
+
     if offer.approval_status != "approved":
         flash("This offer is not currently approved for student access.")
         return redirect(url_for("offers.offer_detail", offer_id=offer.id))
+
 
     if target_session.is_cancelled:
         flash("This session has been cancelled.")
@@ -169,6 +172,41 @@ def rsvp_session(session_id):
         flash("Session is full — you've been added to the waitlist.")
 
     return redirect(url_for("offers.offer_detail", offer_id=offer.id))
+
+
+@sessions_bp.route("/sessions/<int:session_id>/join")
+@login_required
+def join_session(session_id):
+    target_session = Session.query.get_or_404(session_id)
+    enrollment = Enrollment.query.filter_by(
+        session_id=target_session.id,
+        student_id=current_user.id,
+        status="confirmed",
+    ).first()
+    is_teacher = target_session.offer.teacher_id == current_user.id
+    if not is_teacher and not enrollment:
+        abort(403)
+    if not target_session.join_available:
+        flash("The meeting link is available from five minutes before the session until it ends.")
+        return redirect(url_for("offers.offer_detail", offer_id=target_session.offer_id))
+    return redirect(target_session.meeting_link)
+
+
+@sessions_bp.route("/sessions/<int:session_id>/recording/view")
+@login_required
+def view_recording(session_id):
+    target_session = Session.query.get_or_404(session_id)
+    if target_session.recording_status != "uploaded":
+        abort(404)
+    is_teacher = target_session.offer.teacher_id == current_user.id
+    enrollment = Enrollment.query.filter_by(
+        session_id=target_session.id,
+        student_id=current_user.id,
+        status="confirmed",
+    ).first()
+    if not (current_user.is_admin or is_teacher or enrollment):
+        abort(403)
+    return redirect(target_session.recording_url)
 
 
 @sessions_bp.route("/sessions/<int:session_id>/feedback", methods=["GET", "POST"])
@@ -336,7 +374,7 @@ def session_history():
         .join(Offer)
         .filter(Offer.teacher_id == current_user.id, Session.deleted_at.is_(None))
         .order_by(Session.start_time.desc())
-        .all()
+        .paginate(page=request.args.get("teaching_page", 1, type=int), per_page=12, error_out=False)
     )
 
     attended_sessions = (
@@ -344,7 +382,7 @@ def session_history():
         .join(Enrollment)
         .filter(Enrollment.student_id == current_user.id, Session.deleted_at.is_(None))
         .order_by(Session.start_time.desc())
-        .all()
+        .paginate(page=request.args.get("learning_page", 1, type=int), per_page=12, error_out=False)
     )
 
     return render_template(
