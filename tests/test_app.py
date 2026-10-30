@@ -187,7 +187,10 @@ def test_material_and_recording_visibility_are_authorized(client, tmp_path):
     db.session.commit()
     db.session.add(Enrollment(session_id=session.id, student_id=stranger.id, status="confirmed"))
     db.session.commit()
-    assert client.get(f"/offers/{offer.id}/material").status_code == 200
+    material_response = client.get(f"/offers/{offer.id}/material")
+    assert material_response.status_code == 200
+    assert material_response.mimetype == "application/pdf"
+    assert material_response.headers["Content-Disposition"].startswith("inline;")
     recording_response = client.get(f"/sessions/{session.id}/recording/view")
     assert recording_response.status_code == 302
     assert recording_response.headers["Location"] == session.recording_url
