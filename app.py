@@ -51,6 +51,15 @@ def create_app(test_config=None):
 
     login_manager.login_view = "auth.login"
 
+    @app.before_request
+    def require_password_change():
+        if (
+            current_user.is_authenticated
+            and current_user.must_change_password
+            and request.endpoint not in {"auth.change_password", "auth.logout", "static"}
+        ):
+            return redirect(url_for("auth.change_password"))
+
     @app.route("/_ip")
     def app_ip():
         return {

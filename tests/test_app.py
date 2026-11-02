@@ -196,16 +196,93 @@ def test_explore_requires_login_and_preserves_destination(client):
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/explore")
 
+
+def test_temporary_password_forces_change_and_blocks_platform_pages(client):
+    user = User(name="Temporary User", email="temporary@example.com")
+    user.set_password("Temporary123")
+    db.session.add(user)
+    db.session.commit()
+
+    response = client.post("/login", data={
+        "email": "temporary@example.com",
+        "password": "Temporary123",
+    })
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/change-password")
+    assert client.get("/dashboard").headers["Location"].endswith("/change-password")
+    assert client.get("/explore").headers["Location"].endswith("/change-password")
+    assert client.get("/profile").headers["Location"].endswith("/change-password")
+    assert client.get("/sessions/history").headers["Location"].endswith("/change-password")
+
+
+def test_password_change_validates_confirmation_and_length(client):
+    user = User(name="Temporary User", email="temporary@example.com")
+    user.set_password("Temporary123")
+    db.session.add(user)
+    db.session.commit()
+    _login(client, user.email)
+
+    mismatch = client.post("/change-password", data={
+        "password": "NewPassword123",
+        "password_confirmation": "Different123",
+    }, follow_redirects=True)
+    assert b"must match" in mismatch.data
+    assert user.must_change_password is True
+
+    too_short = client.post("/change-password", data={
+        "password": "short",
+        "password_confirmation": "short",
+    }, follow_redirects=True)
+    assert b"between 8 and 128" in too_short.data
+    assert user.must_change_password is True
+
+
+def test_successful_password_change_invalidates_old_password_and_preserves_admin(client):
+    admin = User(name="Temporary Admin", email="temporary-admin@example.com", is_admin=True)
+    admin.set_password("Temporary123")
+    db.session.add(admin)
+    db.session.commit()
+    _login(client, admin.email)
+
+    response = client.post("/change-password", data={
+        "password": "Permanent123",
+        "password_confirmation": "Permanent123",
+    })
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/dashboard")
+    assert admin.must_change_password is False
+    assert admin.is_admin is True
+    assert admin.check_password("Permanent123")
+    assert not admin.check_password("Temporary123")
+    client.get("/logout")
+    old_password_login = client.post("/login", data={
+        "email": "temporary-admin@example.com",
+        "password": "Temporary123",
+    })
+    assert old_password_login.status_code == 302
+    assert old_password_login.headers["Location"].endswith("/login")
+    new_password_login = client.post("/login", data={
+        "email": "temporary-admin@example.com",
+        "password": "Permanent123",
+    })
+    assert new_password_login.status_code == 302
+    assert new_password_login.headers["Location"].endswith("/dashboard")
+    assert client.get("/admin/dashboard").status_code == 200
+    assert client.get("/explore").status_code == 200
+
+
 def test_duplicate_enrollment_rejected(client):
     user = User(
         name="Student",
-        email="student@example.com"
+        email="student@example.com",
+        must_change_password=False,
     )
     user.set_password("TestPassword123")
 
     teacher = User(
         name="Teacher",
-        email="teacher@example.com"
+        email="teacher@example.com",
+        must_change_password=False,
     )
     teacher.set_password("TestPassword123")
 
@@ -258,7 +335,7 @@ def test_duplicate_enrollment_rejected(client):
 
 
 def _create_user(name, email):
-    user = User(name=name, email=email)
+    user = User(name=name, email=email, must_change_password=False)
     user.set_password("TestPassword123")
     db.session.add(user)
     db.session.flush()
@@ -517,7 +594,8 @@ def test_delete_routes_require_csrf_when_enabled(client):
 def test_duplicate_upvote_rejected(client):
     user = User(
         name="Student",
-        email="student@example.com"
+        email="student@example.com",
+        must_change_password=False,
     )
     user.set_password("TestPassword123")
 

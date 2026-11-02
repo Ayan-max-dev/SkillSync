@@ -220,6 +220,7 @@ def import_students(
                     email=student.email,
                     grade=student.grade,
                     is_admin=False,
+                    must_change_password=True,
                 )
                 user.set_password(password)
                 db.session.add(user)

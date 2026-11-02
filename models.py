@@ -15,6 +15,7 @@ class User(UserMixin, db.Model):
     grade = db.Column(db.String(20), nullable=True)
     courses_completed = db.Column(db.Text, nullable=True)  # free text, e.g. "AP Bio, Algebra II, Spanish 3"
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    must_change_password = db.Column(db.Boolean, default=True, nullable=False)
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)

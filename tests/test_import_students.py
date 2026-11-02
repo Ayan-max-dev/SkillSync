@@ -105,7 +105,9 @@ def test_import_skips_existing_and_duplicate_emails_without_changes(tmp_path, te
     assert summary.skipped_existing == 1
     assert summary.duplicates == 1
     assert User.query.filter_by(email="student_oow@gemsed.com").one().name == "Original Name"
-    assert User.query.filter_by(email="new_oow@gemsed.com").one().check_password("password12345")
+    imported = User.query.filter_by(email="new_oow@gemsed.com").one()
+    assert imported.check_password("password12345")
+    assert imported.must_change_password is True
 
 
 def test_import_reports_count_only_progress(tmp_path, temporary_app):

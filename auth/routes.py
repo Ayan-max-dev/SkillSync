@@ -47,6 +47,8 @@ def _safe_next_url(value):
 @limiter.limit("600 per 5 minutes", key_func=get_remote_address, methods=["POST"])
 def login():
     if current_user.is_authenticated:
+        if current_user.must_change_password:
+            return redirect(url_for("auth.change_password"))
         return redirect(url_for("main.dashboard"))
 
     next_url = _safe_next_url(request.args.get("next") or request.form.get("next"))
@@ -60,11 +62,39 @@ def login():
 
         if user and user.check_password(password):
             login_user(user)
+            if user.must_change_password:
+                return redirect(url_for("auth.change_password"))
             return redirect(next_url or url_for("main.dashboard"))
         flash("Invalid email or password.", "warning")
         return redirect(url_for("auth.login", next=next_url))
 
     return render_template("login.html")
+
+
+@auth_bp.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if not current_user.must_change_password:
+        return redirect(url_for("main.dashboard"))
+
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirmation = request.form.get("password_confirmation", "")
+
+        if not password or not 8 <= len(password) <= 128:
+            flash("Your new password must be between 8 and 128 characters.", "warning")
+            return redirect(url_for("auth.change_password"))
+        if password != confirmation:
+            flash("The password and confirmation must match.", "warning")
+            return redirect(url_for("auth.change_password"))
+
+        current_user.set_password(password)
+        current_user.must_change_password = False
+        db.session.commit()
+        flash("Your password has been updated.", "success")
+        return redirect(url_for("main.dashboard"))
+
+    return render_template("change_password.html")
 
 
 @auth_bp.route("/logout")
