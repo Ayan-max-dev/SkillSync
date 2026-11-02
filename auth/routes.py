@@ -1,4 +1,6 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from urllib.parse import urlparse
+
+from flask import abort, Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from extensions import limiter, login_key
@@ -18,10 +20,6 @@ def normalized_email(value):
     return (value or "").strip().lower()
 
 
-def normalized_name(value):
-    return " ".join((value or "").strip().split()).title()
-
-
 @auth_bp.route("/")
 def home():
     if current_user.is_authenticated:
@@ -32,30 +30,16 @@ def home():
 @auth_bp.route("/add-user", methods=["GET", "POST"])
 @limiter.limit("10 per minute")
 def add_user():
-    if current_user.is_authenticated:
-        return redirect(url_for("main.dashboard"))
+    abort(404)
 
-    if request.method == "POST":
-        name = normalized_name(bounded_text(request.form.get("name"), 100))
-        email = normalized_email(bounded_text(request.form.get("email"), 120))
-        password = request.form.get("password", "")
 
-        if not name or not email or "@" not in email or not 8 <= len(password) <= 128:
-            flash("Enter a valid name, email, and password (8–128 characters).", "warning")
-            return redirect(url_for("auth.add_user"))
-
-        if User.query.filter_by(email=email).first():
-            flash("An account with that email already exists.", "warning")
-            return redirect(url_for("auth.add_user"))
-
-        new_user = User(name=name, email=email)
-        new_user.set_password(password)
-        db.session.add(new_user)
-        db.session.commit()
-        login_user(new_user)
-        return redirect(url_for("main.dashboard"))
-
-    return render_template("add_user.html")
+def _safe_next_url(value):
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme or parsed.netloc or not value.startswith("/"):
+        return None
+    return value
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -65,19 +49,20 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for("main.dashboard"))
 
+    next_url = _safe_next_url(request.args.get("next") or request.form.get("next"))
     if request.method == "POST":
         email = normalized_email(bounded_text(request.form.get("email"), 120))
         password = request.form.get("password", "")
         if not email or not password or len(password) > 128:
             flash("Enter your email and password.", "warning")
-            return redirect(url_for("auth.login"))
+            return redirect(url_for("auth.login", next=next_url))
         user = User.query.filter(db.func.lower(User.email) == email).first()
 
         if user and user.check_password(password):
             login_user(user)
-            return redirect(url_for("main.dashboard"))
+            return redirect(next_url or url_for("main.dashboard"))
         flash("Invalid email or password.", "warning")
-        return redirect(url_for("auth.login"))
+        return redirect(url_for("auth.login", next=next_url))
 
     return render_template("login.html")
 

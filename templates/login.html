@@ -17,6 +17,7 @@
 
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% if request.args.get('next') %}<input type="hidden" name="next" value="{{ request.args.get('next') }}">{% endif %}
                     <div class="mb-3">
                         <label class="form-label">Email</label>
                         <input type="email" name="email" class="form-control" placeholder="you@school.edu" required>
@@ -27,9 +28,7 @@
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Log In</button>
                 </form>
-                <p class="text-center text-muted mt-3 mb-0">
-                    No account? <a href="{{ url_for('auth.add_user') }}">Sign up</a>
-                </p>
+                <p class="text-center text-muted mt-3 mb-0">SkillSync is available to existing members.</p>
             </div>
         </div>
     </div>

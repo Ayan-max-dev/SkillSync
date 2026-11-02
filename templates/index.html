@@ -2,9 +2,10 @@
 {% block title %}SkillSync — Home{% endblock %}
 
 {% block content %}
-<div class="text-center py-5">
+<div class="text-center py-5 px-2">
+    <p class="text-uppercase small fw-semibold text-muted mb-3">Welcome to SkillSync</p>
     <h1 class="fw-bold">Learn something new. Teach what you know.</h1>
-    <p class="lead text-muted">A peer-to-peer skill-sharing platform, by students, for students.</p>
-    <a href="{{ url_for('auth.add_user') }}" class="btn btn-primary btn-lg mt-3">Get Started</a>
+    <p class="lead text-muted mx-auto" style="max-width: 40rem;">A peer-to-peer skill-sharing platform where students share knowledge, build confidence, and learn together.</p>
+    <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg mt-3 px-4">Log in to SkillSync</a>
 </div>
 {% endblock %}

@@ -52,34 +52,14 @@ def test_404_page(client):
     assert response.status_code == 404
 
 
-def test_signup(client):
-    response = client.post(
-        "/add-user",
-        data={
-            "name": "Test Student",
-            "email": "test@example.com",
-            "password": "TestPassword123"
-        },
-        follow_redirects=True
-    )
-
-    assert response.status_code == 200
-
-    user = User.query.filter_by(email="test@example.com").first()
-
-    assert user is not None
-    assert user.name == "Test Student"
+def test_registration_is_not_public(client):
+    assert client.get("/add-user").status_code == 404
+    assert client.post("/add-user").status_code == 404
 
 
 def test_login(client):
-    client.post(
-        "/add-user",
-        data={
-            "name": "Test Student",
-            "email": "test@example.com",
-            "password": "TestPassword123"
-        }
-    )
+    _create_user("Test Student", "test@example.com")
+    db.session.commit()
 
     response = client.post(
         "/login",
@@ -202,21 +182,19 @@ def test_dashboard_requires_login(client):
     assert response.status_code == 302
 
 
-def test_signup_rejects_invalid_email(client):
-    response = client.post(
-        "/add-user",
-        data={
-            "name": "Test Student",
-            "email": "not-an-email",
-            "password": "TestPassword123"
-        }
-    )
-
+def test_explore_requires_login_and_preserves_destination(client):
+    response = client.get("/explore")
     assert response.status_code == 302
+    assert "/login?next=%2Fexplore" in response.headers["Location"]
 
-    user = User.query.filter_by(email="not-an-email").first()
-
-    assert user is None
+    _create_user("Explore Student", "explore@example.com")
+    db.session.commit()
+    response = client.post(
+        "/login?next=%2Fexplore",
+        data={"email": "explore@example.com", "password": "TestPassword123"},
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/explore")
 
 def test_duplicate_enrollment_rejected(client):
     user = User(
@@ -637,15 +615,14 @@ def test_login_email_is_case_insensitive(client):
     assert response.headers["Location"].endswith("/dashboard")
 
 
-def test_registration_normalizes_name(client):
-    response = client.post("/add-user", data={
-        "name": "  aAHIL   aMANI ",
-        "email": "normalized@example.com",
-        "password": "TestPassword123",
-    })
-
-    assert response.status_code == 302
-    assert db.session.query(User).filter_by(email="normalized@example.com").one().name == "Aahil Amani"
+def test_logged_out_pages_do_not_offer_registration_or_explore(client):
+    homepage = client.get("/")
+    login = client.get("/login")
+    assert b"Sign up" not in homepage.data
+    assert b"Register" not in homepage.data
+    assert b"Explore" not in homepage.data
+    assert b"Sign up" not in login.data
+    assert b"Register" not in login.data
 
 
 def test_admin_can_approve_offer(client):

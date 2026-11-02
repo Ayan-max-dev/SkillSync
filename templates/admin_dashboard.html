@@ -85,11 +85,6 @@
 </div>
 {% if reports_page.pages > 1 %}<div class="small mb-4">Reports page {{ reports_page.page }} of {{ reports_page.pages }} <a href="{{ url_for('admin.dashboard', reports_page=reports_page.prev_num if reports_page.has_prev else 1, status=status_filter) }}">Previous</a> <a href="{{ url_for('admin.dashboard', reports_page=reports_page.next_num if reports_page.has_next else reports_page.pages, status=status_filter) }}">Next</a></div>{% endif %}
 
-<h4 class="fw-bold">Users</h4>
-<div class="list-group mb-5">
-{% for user in users.items %}<div class="list-group-item d-flex justify-content-between align-items-center"><div><strong>{{ user.name }}</strong><div class="small text-muted">{{ user.email }}{% if user.grade %} · {{ user.grade }}{% endif %}</div></div>{% if user.is_admin %}<span class="badge bg-primary">Admin</span>{% else %}<form method="POST" action="{{ url_for('admin.promote_user', user_id=user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-primary">Promote to Admin</button></form>{% endif %}</div>{% endfor %}
-</div>
-
 <h4 class="fw-bold">Session Management</h4>
 <p class="text-muted small">Sessions with an issued certificate are no longer listed here.</p>
 <div class="list-group mb-5">

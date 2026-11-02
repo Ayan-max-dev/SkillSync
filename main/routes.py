@@ -170,6 +170,7 @@ def stats():
 
 
 @main_bp.route("/explore")
+@login_required
 def explore():
     category = request.args.get("category")
     format_filter = request.args.get("format")

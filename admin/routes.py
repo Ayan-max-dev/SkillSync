@@ -63,7 +63,6 @@ def dashboard():
         reports_query = reports_query.filter_by(status=status_filter)
 
     reports_page = reports_query.paginate(page=request.args.get("reports_page", 1, type=int), per_page=20, error_out=False)
-    users_page = User.query.order_by(User.name.asc()).paginate(page=request.args.get("users_page", 1, type=int), per_page=20, error_out=False)
     offers = Offer.query.options(selectinload(Offer.teacher)).order_by(Offer.id.desc()).all()
     requests_page = LearningRequest.query.options(selectinload(LearningRequest.student)).order_by(LearningRequest.id.desc()).paginate(page=request.args.get("requests_page", 1, type=int), per_page=20, error_out=False)
     pending_offers_page = Offer.query.filter(Offer.approval_status == "pending").order_by(Offer.id.desc()).paginate(page=request.args.get("offers_page", 1, type=int), per_page=12, error_out=False)
@@ -82,10 +81,10 @@ def dashboard():
 
     return render_template(
         "admin_dashboard.html",
-        reports=reports_page, users=users_page, offers=offers, requests=requests_page,
+        reports=reports_page, offers=offers, requests=requests_page,
         pending_offers=pending_offers_page, pending_recordings=pending_recordings_page,
         sessions=sessions_page, status_filter=status_filter,
-        reports_page=reports_page, users_page=users_page, requests_page=requests_page,
+        reports_page=reports_page, requests_page=requests_page,
         offers_page=pending_offers_page, recordings_page=pending_recordings_page,
         sessions_page=sessions_page,
     )
